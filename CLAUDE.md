@@ -11,9 +11,27 @@ Specifically **out of bounds by default**: fundraising plans, IP/liability struc
 ## What to read, every session, in order
 
 1. This file.
-2. `docs/BUILD_STATE.md` — current phase, current card, status, carried-over notes from the last session.
-3. The **one** design doc in `docs/design/` that the current card belongs to (see the phase table in `01_phasing_and_mvp_definition.md`). Do not re-read all 14 design docs each session — that is exactly the context bloat this file exists to prevent.
-4. The card definition itself, from `docs/cards/`.
+2. `docs/BUILD_STATE.md` — current phase, current card ID, status, carried-over notes from the last session.
+3. `docs/cards/{DAY_ID}.md` — the one card that's current. It is self-contained: task, deliverable, acceptance criteria, security check, and the exact prompt for that unit of work.
+4. Only if the card references it: the **one** design doc in `docs/design/` it belongs to (see the phase table in `01_phasing_and_mvp_definition.md`). Do not re-read all 14 design docs each session — that is exactly the context bloat this file exists to prevent.
+
+## Calendar, cards, and logs — the three-file convention
+
+- **`docs/BUILD_CALENDAR.md`** — the master sequence, one row per Day ID (`D001`–`D176`), linking to that day's card and log. Day ID is the source of truth for sequence; there are no fixed calendar dates (see "Token-maxing execution" below).
+- **`docs/cards/{DAY_ID}.md`** — the plan/prompt for that day, generated once from the phase plan and not rewritten. Read-only during execution.
+- **`docs/logs/{DAY_ID}.md`** — written *after* the card runs, from `docs/logs/TEMPLATE.md`. Records what happened, the acceptance-criteria check, the security-check answer, commit hash(es), and outcome (Done / Carried / Blocked). Every log links back to its card and to `BUILD_CALENDAR.md`.
+
+At the end of every card: write the log, update that row's Status in `BUILD_CALENDAR.md`, and update `BUILD_STATE.md`'s "current card" pointer to the next unblocked Day ID. A card is **Done** only if its acceptance criteria actually passed — otherwise it is **Carried**, with the reason in the log, and stays the current card next run.
+
+## Token-maxing execution
+
+This project runs as a standing loop: pick up the current card from `BUILD_STATE.md`, execute it fully per the protocol below, close it out (log + calendar + state updated, changes committed), and move to the next unblocked card — repeating until the session's usage limit is hit. When the limit resets, the next run reads `BUILD_STATE.md` cold and continues from exactly where it left off. This is why the log/calendar/state files exist: they are what make resuming after an arbitrary gap identical to resuming after five minutes.
+
+Rules specific to this mode:
+- **Never start a card without confirming the tree is green first** (`pnpm test`, or the equivalent for the current phase). A run that starts on top of an unnoticed break wastes the run.
+- **One card fully closed out is worth more than two cards half-started.** If usage is likely to run out mid-card, prefer to finish and close the current card cleanly rather than starting the next one.
+- **Never mark a gate (G0–G10) passed without its acceptance test actually passing in CI.** Gates are not skippable to keep the loop moving.
+- If genuinely blocked (an external decision, an account not yet provisioned), record the blocker in the log and in `BUILD_STATE.md`, and move to the next unblocked card in the same phase rather than idling — per `docs/design/12_daily_build_protocol.md`.
 
 ## The build protocol
 
