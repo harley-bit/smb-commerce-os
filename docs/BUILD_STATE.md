@@ -29,6 +29,7 @@ Full task, deliverable, acceptance criteria, and security check are in the card 
 - `docs/BUILD_CALENDAR.md` generated from the original `build_calendar.xlsx` Daily Plan sheet (176 rows) — same tasks, deliverables, acceptance criteria, and security checks the coworker's plan already defined, just restructured as one linked file per day instead of spreadsheet rows.
 - `docs/cards/D001.md` … `D176.md` generated, one per day, each self-contained with the exact prompt to run that card.
 - `docs/logs/` created empty except `TEMPLATE.md` — the first real file lands as `docs/logs/D001.md` once D001 is actually run.
+- `docs/implementation_calendar/build_calendar.xlsx` — the original coworker-plan spreadsheet, copied into this repo with real hyperlink columns added (`M` Card, `N` Log) pointing at `docs/cards/{DAY_ID}.md` and `docs/logs/{DAY_ID}.md`. This is the human-facing dashboard; `docs/BUILD_CALENDAR.md` stays the source of truth I read/write. Run `python3 scripts/sync_calendar_xlsx.py` after closing out a card to push Status/Notes into the spreadsheet without touching its hyperlinks.
 - `pnpm` not yet installed on this machine — corepack is available (`corepack enable`); first real session should use `corepack pnpm` rather than a global npm install.
 - D1 and D4 should be resolved before D001 starts — D4 specifically because Phase 0 includes identity-provider integration.
 

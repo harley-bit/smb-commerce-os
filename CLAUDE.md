@@ -15,13 +15,16 @@ Specifically **out of bounds by default**: fundraising plans, IP/liability struc
 3. `docs/cards/{DAY_ID}.md` — the one card that's current. It is self-contained: task, deliverable, acceptance criteria, security check, and the exact prompt for that unit of work.
 4. Only if the card references it: the **one** design doc in `docs/design/` it belongs to (see the phase table in `01_phasing_and_mvp_definition.md`). Do not re-read all 14 design docs each session — that is exactly the context bloat this file exists to prevent.
 
-## Calendar, cards, and logs — the three-file convention
+## Calendar, cards, and logs — the four-file convention
 
-- **`docs/BUILD_CALENDAR.md`** — the master sequence, one row per Day ID (`D001`–`D176`), linking to that day's card and log. Day ID is the source of truth for sequence; there are no fixed calendar dates (see "Token-maxing execution" below).
-- **`docs/cards/{DAY_ID}.md`** — the plan/prompt for that day, generated once from the phase plan and not rewritten. Read-only during execution.
+There are two calendars, deliberately, for two different readers. They must never be allowed to disagree — see the sync rule below.
+
+- **`docs/BUILD_CALENDAR.md`** — machine-facing, read/written by Claude every session. One row per Day ID (`D001`–`D176`), Status column, links to card and log. **This is the source of truth I check and update during a run.**
+- **`docs/implementation_calendar/build_calendar.xlsx`** — human-facing dashboard (the original coworker-plan spreadsheet, carried forward). Same 176 rows, plus its own Config/Phase Summary/Weekly Review/Escalation Triggers sheets. Columns `M` (Card) and `N` (Log) on the Daily Plan sheet are real hyperlinks to `docs/cards/{DAY_ID}.md` and `docs/logs/{DAY_ID}.md` — click a row's link to open that day's prompt or log directly. **Open this one when you want to browse or click through; don't hand-edit its Status column** — it's regenerated from `BUILD_CALENDAR.md`, and a manual edit there will be silently overwritten on the next sync.
+- **`docs/cards/{DAY_ID}.md`** — the plan/prompt for that day, already fully generated for all 176 days (not a placeholder — task, deliverable, acceptance criteria, security check, and the exact prompt text are all written out). Read-only during execution.
 - **`docs/logs/{DAY_ID}.md`** — written *after* the card runs, from `docs/logs/TEMPLATE.md`. Records what happened, the acceptance-criteria check, the security-check answer, commit hash(es), and outcome (Done / Carried / Blocked). Every log links back to its card and to `BUILD_CALENDAR.md`.
 
-At the end of every card: write the log, update that row's Status in `BUILD_CALENDAR.md`, and update `BUILD_STATE.md`'s "current card" pointer to the next unblocked Day ID. A card is **Done** only if its acceptance criteria actually passed — otherwise it is **Carried**, with the reason in the log, and stays the current card next run.
+**Sync rule:** at the end of every card, update the row's Status in `docs/BUILD_CALENDAR.md` first (that's the real record), then regenerate the matching row in the `.xlsx` (Status + Notes only — never touch its hyperlink columns) so the human dashboard never drifts from what actually happened. Also update `BUILD_STATE.md`'s "current card" pointer to the next unblocked Day ID. A card is **Done** only if its acceptance criteria actually passed — otherwise it is **Carried**, with the reason in the log, and stays the current card next run.
 
 ## Token-maxing execution
 
