@@ -26,6 +26,16 @@ There are two calendars, deliberately, for two different readers. They must neve
 
 **Sync rule:** at the end of every card, update the row's Status in `docs/BUILD_CALENDAR.md` first (that's the real record), then regenerate the matching row in the `.xlsx` (Status + Notes only — never touch its hyperlink columns) so the human dashboard never drifts from what actually happened. Also update `BUILD_STATE.md`'s "current card" pointer to the next unblocked Day ID. A card is **Done** only if its acceptance criteria actually passed — otherwise it is **Carried**, with the reason in the log, and stays the current card next run.
 
+## Operating model — WHO / WHAT / WHEN / WHERE / HOW
+
+- **WHO** executes: the agent (Claude), acting as the developer for this repo.
+- **WHAT** gets executed: the current card's prompt/plan, exactly as written in `docs/cards/{DAY_ID}.md`.
+- **WHEN**: continuously, one card after another, for as long as the session can run (see "Token-maxing execution" below). There are no fixed calendar-date triggers — Day ID sequence, not a date, decides what's next. The `.xlsx` dashboard's Date column is an inherited planning artifact, not a schedule this loop waits on.
+- **WHERE**: locally, strictly inside this repository (`/Users/harleybarrales/Documents/Git Code Base/smb-commerce-os`). `.claude/settings.json` pre-approves the ordinary build/test/git operations needed to run without interruption, scoped to this directory only — it is an allowlist, not a blanket permissions bypass. Remote git operations (push/pull/fetch/remote), history-rewriting or destructive git (reset --hard, clean, rebase, branch delete, config changes), sudo, and broad `rm -rf` are explicitly excluded and still require a human decision.
+- **HOW**: per the build protocol below, to the acceptance criteria on the card — no shortcuts on the non-negotiable gates.
+
+Logging is not optional and is not a summary written from memory afterward: every card's actual outcome is captured in `docs/logs/{DAY_ID}.md` as it happens, cross-linked to its card and calendar row, per the convention above.
+
 ## Token-maxing execution
 
 This project runs as a standing loop: pick up the current card from `BUILD_STATE.md`, execute it fully per the protocol below, close it out (log + calendar + state updated, changes committed), and move to the next unblocked card — repeating until the session's usage limit is hit. When the limit resets, the next run reads `BUILD_STATE.md` cold and continues from exactly where it left off. This is why the log/calendar/state files exist: they are what make resuming after an arbitrary gap identical to resuming after five minutes.
