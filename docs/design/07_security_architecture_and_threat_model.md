@@ -27,13 +27,15 @@ The highest-severity risk in the platform. A cross-tenant read is a reportable b
 
 ## Authentication
 
-**Delegated to a managed identity provider.** No password storage, no reset flows, no session management written in-house. Decision D4 selects the provider; AWS Cognito is the default given the AWS target, with Auth0 or Clerk as alternatives if developer experience outweighs consolidation.
+**Superseded in part by [`docs/adr/ADR-002-authentication-provider.md`](../adr/ADR-002-authentication-provider.md).** The paragraph below (delegated managed IdP, no in-house password storage) was this project's Phase 0 assumption. Founder decision (2026-09-07, D4): build authentication **natively** for the MVP, behind an `AuthProvider` interface, with **Auth0 as the intended future provider** wired in later rather than now. Read ADR-002 for the concrete security requirements this creates (Argon2id hashing, session table, rate limiting, reset-token handling) — they replace "no password storage anywhere" as this system's actual authentication security check. The MFA and secure-storage rules below still apply regardless of provider.
 
-- OIDC authorization code flow with PKCE for web and mobile.
-- Short-lived access tokens (15 minutes); refresh tokens rotated on use with reuse detection.
-- **MFA required for `OWNER` and `ADMIN` roles.** These accounts can move money.
-- Mobile tokens in platform secure storage (Keychain / Keystore), never `AsyncStorage`.
-- Web tokens in memory with an httpOnly, `SameSite=Strict`, Secure refresh cookie — not `localStorage`, which is XSS-readable.
+~~**Delegated to a managed identity provider.** No password storage, no reset flows, no session management written in-house. Decision D4 selects the provider; AWS Cognito is the default given the AWS target, with Auth0 or Clerk as alternatives if developer experience outweighs consolidation.~~
+
+~~- OIDC authorization code flow with PKCE for web and mobile.~~
+~~- Short-lived access tokens (15 minutes); refresh tokens rotated on use with reuse detection.~~
+- **MFA required for `OWNER` and `ADMIN` roles.** These accounts can move money. (Still applies — TOTP, per ADR-002.)
+- Mobile tokens in platform secure storage (Keychain / Keystore), never `AsyncStorage`. (Still applies once mobile — Phase 8 — exists.)
+- Web session token in an httpOnly, `SameSite=Strict`, Secure cookie — not `localStorage`, which is XSS-readable. (Still applies; see ADR-002 for why this is now an opaque session token rather than a refreshed JWT.)
 
 ## Authorization
 

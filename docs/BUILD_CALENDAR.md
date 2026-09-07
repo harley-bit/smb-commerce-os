@@ -15,7 +15,7 @@ Sequential, not date-locked. Under token-maxing execution, real elapsed time bet
 | <a id="d007"></a>D007 | P0 — Foundations & Security Baseline | CI/CD | Dependency scanning and SBOM |  | Not started | [card](docs/cards/D007.md) | [log](docs/logs/D007.md) (not yet run) |
 | <a id="d008"></a>D008 | P0 — Foundations & Security Baseline | CI/CD | SAST |  | Not started | [card](docs/cards/D008.md) | [log](docs/logs/D008.md) (not yet run) |
 | <a id="d009"></a>D009 | P0 — Foundations & Security Baseline | CI/CD | Branch protection and PR template |  | Not started | [card](docs/cards/D009.md) | [log](docs/logs/D009.md) (not yet run) |
-| <a id="d010"></a>D010 | P0 — Foundations & Security Baseline | Security foundation | Identity provider spike |  | Not started | [card](docs/cards/D010.md) | [log](docs/logs/D010.md) (not yet run) |
+| <a id="d010"></a>D010 | P0 — Foundations & Security Baseline | Security foundation | Native AuthProvider implementation (revised per ADR-002 — was "Identity provider spike") |  | Not started | [card](docs/cards/D010.md) | [log](docs/logs/D010.md) (not yet run) |
 | <a id="d011"></a>D011 | P0 — Foundations & Security Baseline | Security foundation | Security policy set |  | Not started | [card](docs/cards/D011.md) | [log](docs/logs/D011.md) (not yet run) |
 | <a id="d012"></a>D012 | P0 — Foundations & Security Baseline | Security foundation | Threat model, IR plan, subprocessors — GATE G0 | G0 | Not started | [card](docs/cards/D012.md) | [log](docs/logs/D012.md) (not yet run) |
 | <a id="d013"></a>D013 | P1 — Domain Model & Database | Database foundation | SQLite connection layer |  | Not started | [card](docs/cards/D013.md) | [log](docs/logs/D013.md) (not yet run) |

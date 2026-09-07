@@ -123,10 +123,8 @@ Python is the better choice if the platform later does serious data or machine-l
 
 ## Ratification
 
-This ADR is **proposed**, not accepted. Phase 0 does not begin until the founder records acceptance below.
-
 | Field | Value |
 |---|---|
-| Decision | ☐ Accepted ☐ Accepted with modifications ☐ Rejected |
-| Date | |
-| Notes | |
+| Decision | ☑ Accepted |
+| Date | 2026-09-07 |
+| Notes | Accepted as proposed, no modifications. |

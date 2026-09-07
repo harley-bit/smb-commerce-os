@@ -17,10 +17,12 @@ Full task, deliverable, acceptance criteria, and security check are in the card 
 
 | # | Decision | Status |
 |---|---|---|
-| D1 | Ratify ADR-001 stack recommendation | **Not yet ratified** — recommend accepting as-is (TypeScript everywhere: Fastify, Drizzle, Next.js, Expo). Needs an explicit yes before Phase 0 proceeds past scaffolding. |
+| D1 | Ratify ADR-001 stack recommendation | **Answered — accepted as proposed.** TypeScript everywhere: Fastify, Drizzle, Next.js, Expo, pnpm monorepo. `docs/design/02_ADR_001_stack_decision.md`'s ratification table can be marked Accepted. |
 | D2 | Confirm build cadence (drives every date) | **Answered** — 5–6 sessions/week, Claude as builder. |
-| D3 | Mobile in MVP or post-pilot | Not yet decided. Does not block G7 either way (Phase 8 runs after). Can be deferred until Phase 6–7. |
-| D4 | Identity provider | Not yet decided. Plan default is AWS Cognito. Needs a decision before any auth code is written (Phase 0). |
+| D3 | Mobile in MVP or post-pilot | **Answered — deferred to Phase 8**, post-web-MVP (G7). Matches the phase plan as written; revisit once the web pilot is live. |
+| D4 | Identity provider | **Answered — native for now, Auth0 later.** Build authentication in-house behind an `AuthProvider` interface; wire in Auth0 when it's actually time, as a provider swap, not a rewrite. Full spec: [`docs/adr/ADR-002-authentication-provider.md`](adr/ADR-002-authentication-provider.md). This is a real scope change to D010 (was an OIDC/Cognito spike, now a native auth implementation) — `docs/cards/D010.md` has been rewritten accordingly. |
+
+**No decisions remain blocking.** D001 is ready to run.
 
 ## Carried-over notes for next session
 
