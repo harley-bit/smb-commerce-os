@@ -123,3 +123,8 @@ export {
   type CreateReservationInput,
 } from "./repositories/ReservationRepository.js";
 export { PgReservationRepository } from "./repositories/PgReservationRepository.js";
+export {
+  sweepExpiredHoldsSqlite,
+  sweepExpiredHoldsPg,
+  type SweepResult,
+} from "./jobs/HoldExpirySweeper.js";
