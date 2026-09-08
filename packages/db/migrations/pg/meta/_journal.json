@@ -15,6 +15,13 @@
       "when": 1788870351863,
       "tag": "0001_motionless_callisto",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788871528554,
+      "tag": "0002_nifty_lady_vermin",
+      "breakpoints": true
     }
   ]
 }

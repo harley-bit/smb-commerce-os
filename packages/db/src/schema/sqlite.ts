@@ -1,4 +1,7 @@
+import { sql } from "drizzle-orm";
 import {
+  check,
+  integer,
   primaryKey,
   sqliteTable,
   text,
@@ -87,3 +90,74 @@ export const locations = sqliteTable("locations", {
   country: text("country"),
   archivedAt: text("archived_at"),
 });
+
+/**
+ * `docs/design/03` "Catalog". `mode` is the capacity-strategy discriminator
+ * and is **immutable after creation** — enforced at the repository/service
+ * layer (`D023`), not the DB, since a CHECK constraint only sees a single
+ * row's proposed values and cannot compare against the row it replaces.
+ */
+export const listings = sqliteTable(
+  "listings",
+  {
+    id: text("id").primaryKey(),
+    merchantId: text("merchant_id")
+      .notNull()
+      .references(() => merchants.id),
+    mode: text("mode", { enum: ["PRODUCT", "SERVICE", "RENTAL"] }).notNull(),
+    name: text("name").notNull(),
+    slug: text("slug").notNull(),
+    description: text("description"),
+    status: text("status", {
+      enum: ["DRAFT", "PUBLISHED", "ARCHIVED"],
+    }).notNull(),
+    createdAt: text("created_at").notNull(),
+    archivedAt: text("archived_at"),
+  },
+  (table) => [
+    uniqueIndex("listings_merchant_slug_unique").on(
+      table.merchantId,
+      table.slug,
+    ),
+  ],
+);
+
+/**
+ * `docs/design/03` "Catalog". `mode` is denormalized from the parent
+ * `listings` row (copied at write time, same rationale as `order_lines.mode`)
+ * so the mode-specific-field CHECK below can be enforced locally without a
+ * cross-table lookup. `duration_minutes` is services-only; `rate_period` and
+ * `deposit_minor` are rentals-only.
+ */
+export const listingVariants = sqliteTable(
+  "listing_variants",
+  {
+    id: text("id").primaryKey(),
+    merchantId: text("merchant_id")
+      .notNull()
+      .references(() => merchants.id),
+    listingId: text("listing_id")
+      .notNull()
+      .references(() => listings.id),
+    mode: text("mode", { enum: ["PRODUCT", "SERVICE", "RENTAL"] }).notNull(),
+    sku: text("sku").notNull(),
+    name: text("name").notNull(),
+    attributesJson: text("attributes_json"),
+    priceMinor: integer("price_minor").notNull(),
+    currency: text("currency").notNull(),
+    durationMinutes: integer("duration_minutes"),
+    ratePeriod: text("rate_period", { enum: ["HOUR", "DAY", "WEEK"] }),
+    depositMinor: integer("deposit_minor"),
+    archivedAt: text("archived_at"),
+  },
+  (table) => [
+    check(
+      "listing_variants_mode_fields_check",
+      sql`(
+        (${table.mode} = 'PRODUCT' AND ${table.durationMinutes} IS NULL AND ${table.ratePeriod} IS NULL AND ${table.depositMinor} IS NULL)
+        OR (${table.mode} = 'SERVICE' AND ${table.ratePeriod} IS NULL AND ${table.depositMinor} IS NULL)
+        OR (${table.mode} = 'RENTAL' AND ${table.durationMinutes} IS NULL)
+      )`,
+    ),
+  ],
+);
