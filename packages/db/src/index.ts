@@ -262,3 +262,9 @@ export {
   type PaymentStatus,
   type CreatePaymentInput,
 } from "./repositories/PaymentRepository.js";
+export { SimulatedPaymentIntentProvider } from "./payments/SimulatedPaymentIntentProvider.js";
+export {
+  CheckoutPaymentService,
+  type CreateCheckoutIntentInput,
+  type CheckoutIntentResult,
+} from "./services/CheckoutPaymentService.js";

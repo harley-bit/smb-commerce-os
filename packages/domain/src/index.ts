@@ -22,6 +22,8 @@ export * from "./payments/authorizationWindow.js";
 export * from "./payments/ConnectAccountProvider.js";
 export * from "./payments/connectAccountStatus.js";
 export * from "./payments/DuplicatePaymentReferenceError.js";
+export * from "./payments/applicationFeeSplit.js";
+export * from "./payments/PaymentIntentProvider.js";
 export * from "./media/mediaRetentionPolicy.js";
 
 export function workspaceGraphMarker(): string {
