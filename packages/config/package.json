@@ -3,7 +3,17 @@
   "private": true,
   "version": "0.0.0",
   "license": "UNLICENSED",
+  "type": "module",
   "files": [
     "tsconfig.base.json"
-  ]
+  ],
+  "scripts": {
+    "lint": "echo \"@smb-os/config: no lint rules configured yet\"",
+    "test": "vitest run",
+    "test:isolation": "echo \"@smb-os/config: no isolation suite yet\""
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
 }

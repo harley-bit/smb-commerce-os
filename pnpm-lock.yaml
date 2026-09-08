@@ -142,7 +142,14 @@ importers:
         specifier: ^5.7.2
         version: 5.9.3
 
-  packages/config: {}
+  packages/config:
+    devDependencies:
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9
 
   packages/contracts:
     devDependencies:
