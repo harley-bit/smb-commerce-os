@@ -1,11 +1,29 @@
+import { TOTP, Secret } from "otpauth";
 import { describe, expect, it } from "vitest";
-import { AccountLockedError, InvalidCredentialsError } from "@smb-os/domain";
+import {
+  AccountLockedError,
+  InvalidCredentialsError,
+  InvalidMfaCodeError,
+  MfaCodeRequiredError,
+  MfaEnrollmentRequiredError,
+} from "@smb-os/domain";
 import { NativeAuthProvider } from "../src/auth/NativeAuthProvider";
 import {
   InMemoryResetTokenRepository,
   InMemorySessionRepository,
   InMemoryUserRepository,
 } from "../src/auth/repositories";
+
+function currentCode(secretBase32: string, email: string): string {
+  return new TOTP({
+    issuer: "SMB Commerce OS",
+    label: email,
+    algorithm: "SHA1",
+    digits: 6,
+    period: 30,
+    secret: Secret.fromBase32(secretBase32),
+  }).generate();
+}
 
 function makeProvider() {
   const users = new InMemoryUserRepository();
@@ -90,5 +108,63 @@ describe("NativeAuthProvider security properties", () => {
     const { provider, getIssuedResetToken } = makeProvider();
     await provider.initiatePasswordReset("ghost@example.com");
     expect(getIssuedResetToken()).toBe("");
+  });
+
+  it("requires MFA enrollment for OWNER/ADMIN before login succeeds, even with the right password (ADR-002)", async () => {
+    const { provider } = makeProvider();
+    const email = "owner@example.com";
+    await provider.register(email, "correct-password-123");
+
+    await expect(provider.authenticate(email, "correct-password-123")).rejects.toBeInstanceOf(
+      MfaEnrollmentRequiredError,
+    );
+  });
+
+  it("enrolls, confirms, and then enforces a TOTP code on every subsequent login", async () => {
+    const { provider, users } = makeProvider();
+    const email = "owner@example.com";
+    const password = "correct-password-123";
+    await provider.register(email, password);
+
+    const enrollment = await provider.enrollMfa(email, password);
+    expect(enrollment.secret).toMatch(/^[A-Z2-7]+$/); // base32
+    expect(enrollment.otpauthUrl).toMatch(/^otpauth:\/\/totp\//);
+
+    // Not yet confirmed: mfaEnabled stays false and login still demands enrollment.
+    expect((await users.findByEmail(email))?.mfaEnabled).toBe(false);
+    await expect(provider.authenticate(email, password)).rejects.toBeInstanceOf(MfaEnrollmentRequiredError);
+
+    await expect(provider.confirmMfaEnrollment(email, password, "000000")).rejects.toBeInstanceOf(
+      InvalidMfaCodeError,
+    );
+
+    await provider.confirmMfaEnrollment(email, password, currentCode(enrollment.secret, email));
+    expect((await users.findByEmail(email))?.mfaEnabled).toBe(true);
+
+    await expect(provider.authenticate(email, password)).rejects.toBeInstanceOf(MfaCodeRequiredError);
+    await expect(provider.authenticate(email, password, "000000")).rejects.toBeInstanceOf(InvalidMfaCodeError);
+
+    const result = await provider.authenticate(email, password, currentCode(enrollment.secret, email));
+    expect(result.email).toBe(email);
+  });
+
+  it("does not require MFA for a role outside OWNER/ADMIN", async () => {
+    const { provider, users } = makeProvider();
+    const email = "staff@example.com";
+    const password = "correct-password-123";
+    const { userId } = await provider.register(email, password);
+    // Simulate a non-privileged role — role assignment beyond OWNER-on-register is future scope.
+    await users.create({
+      id: userId,
+      email,
+      passwordHash: (await users.findById(userId))!.passwordHash,
+      roles: ["STAFF"],
+      createdAt: new Date().toISOString(),
+      mfaSecret: null,
+      mfaEnabled: false,
+    });
+
+    const result = await provider.authenticate(email, password);
+    expect(result.email).toBe(email);
   });
 });

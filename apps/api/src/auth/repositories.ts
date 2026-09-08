@@ -14,6 +14,10 @@ export interface UserRecord {
   passwordHash: string;
   roles: string[];
   createdAt: string;
+  /** Pending or confirmed TOTP secret (base32). Null until `enrollMfa` is called. */
+  mfaSecret: string | null;
+  /** True once `confirmMfaEnrollment` has verified a code against `mfaSecret`. */
+  mfaEnabled: boolean;
 }
 
 export interface SessionRecord {
@@ -39,6 +43,8 @@ export interface UserRepository {
   findById(id: string): Promise<UserRecord | null>;
   create(record: UserRecord): Promise<void>;
   updatePasswordHash(userId: string, passwordHash: string): Promise<void>;
+  setPendingMfaSecret(userId: string, secret: string): Promise<void>;
+  enableMfa(userId: string): Promise<void>;
 }
 
 export interface SessionRepository {
@@ -77,6 +83,22 @@ export class InMemoryUserRepository implements UserRepository {
       return;
     }
     this.byId.set(userId, { ...existing, passwordHash });
+  }
+
+  async setPendingMfaSecret(userId: string, secret: string): Promise<void> {
+    const existing = this.byId.get(userId);
+    if (!existing) {
+      return;
+    }
+    this.byId.set(userId, { ...existing, mfaSecret: secret, mfaEnabled: false });
+  }
+
+  async enableMfa(userId: string): Promise<void> {
+    const existing = this.byId.get(userId);
+    if (!existing) {
+      return;
+    }
+    this.byId.set(userId, { ...existing, mfaEnabled: true });
   }
 }
 

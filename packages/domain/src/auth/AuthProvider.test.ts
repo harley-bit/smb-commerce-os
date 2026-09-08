@@ -3,9 +3,13 @@ import {
   AccountLockedError,
   EmailAlreadyRegisteredError,
   InvalidCredentialsError,
+  InvalidMfaCodeError,
   InvalidResetTokenError,
+  MfaCodeRequiredError,
+  MfaEnrollmentRequiredError,
   type AuthProvider,
   type AuthResult,
+  type MfaEnrollment,
   type Session,
   type TenantContext,
 } from "./AuthProvider.js";
@@ -25,9 +29,13 @@ describe("AuthProvider domain contract", () => {
       revokeSession: async (): Promise<void> => undefined,
       initiatePasswordReset: async (): Promise<void> => undefined,
       completePasswordReset: async (): Promise<void> => undefined,
+      enrollMfa: async (): Promise<MfaEnrollment> => ({ secret: "s1", otpauthUrl: "otpauth://totp/x" }),
+      confirmMfaEnrollment: async (): Promise<void> => undefined,
     };
 
     expect(typeof stubProvider.authenticate).toBe("function");
+    expect(typeof stubProvider.enrollMfa).toBe("function");
+    expect(typeof stubProvider.confirmMfaEnrollment).toBe("function");
   });
 
   it("exposes distinct, named error classes so callers can branch on failure mode", () => {
@@ -35,6 +43,9 @@ describe("AuthProvider domain contract", () => {
     expect(new AccountLockedError().name).toBe("AccountLockedError");
     expect(new InvalidResetTokenError().name).toBe("InvalidResetTokenError");
     expect(new EmailAlreadyRegisteredError().name).toBe("EmailAlreadyRegisteredError");
+    expect(new MfaEnrollmentRequiredError().name).toBe("MfaEnrollmentRequiredError");
+    expect(new MfaCodeRequiredError().name).toBe("MfaCodeRequiredError");
+    expect(new InvalidMfaCodeError().name).toBe("InvalidMfaCodeError");
   });
 
   it("never puts a password field on the error or result types (compile-time check)", () => {

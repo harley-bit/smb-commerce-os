@@ -11,6 +11,8 @@ describe("in-memory auth repositories (temporary until D013–D015 Drizzle wirin
     expect(await users.findByEmail("nobody@example.com")).toBeNull();
     expect(await users.findById("no-such-id")).toBeNull();
     await expect(users.updatePasswordHash("no-such-id", "hash")).resolves.toBeUndefined();
+    await expect(users.setPendingMfaSecret("no-such-id", "secret")).resolves.toBeUndefined();
+    await expect(users.enableMfa("no-such-id")).resolves.toBeUndefined();
   });
 
   it("SessionRepository: findByToken returns null for unknown token; revoke is a no-op for an unknown token", async () => {

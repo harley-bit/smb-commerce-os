@@ -1,4 +1,6 @@
+import { Secret, TOTP } from "otpauth";
 import { beforeEach, describe, expect, it } from "vitest";
+import type { FastifyInstance } from "fastify";
 import { buildApp } from "../src/app";
 
 const EMAIL = "owner@example.com";
@@ -16,6 +18,32 @@ function extractSessionCookie(setCookieHeader: string | string[] | undefined): s
   return `session=${match[1]}`;
 }
 
+function currentCode(secretBase32: string, email: string): string {
+  return new TOTP({
+    issuer: "SMB Commerce OS",
+    label: email,
+    algorithm: "SHA1",
+    digits: 6,
+    period: 30,
+    secret: Secret.fromBase32(secretBase32),
+  }).generate();
+}
+
+/** Every registered account is OWNER by default, so MFA enrollment (ADR-002) is a login prerequisite. */
+async function enrollMfa(app: FastifyInstance, email: string, password: string): Promise<string> {
+  const enrollRes = await app.inject({ method: "POST", url: "/auth/mfa/enroll", payload: { email, password } });
+  const { secret } = enrollRes.json() as { secret: string };
+  const confirmRes = await app.inject({
+    method: "POST",
+    url: "/auth/mfa/confirm",
+    payload: { email, password, code: currentCode(secret, email) },
+  });
+  if (confirmRes.statusCode !== 200) {
+    throw new Error(`MFA confirmation failed in test setup: ${confirmRes.statusCode}`);
+  }
+  return secret;
+}
+
 describe("native auth flow (D010 acceptance criteria)", () => {
   it("registers, logs in, accesses an authenticated route, logs out, and revokes the session", async () => {
     const app = buildApp();
@@ -28,10 +56,21 @@ describe("native auth flow (D010 acceptance criteria)", () => {
     expect(registerRes.statusCode).toBe(201);
     expect(registerRes.json()).toMatchObject({ email: EMAIL });
 
-    const loginRes = await app.inject({
+    // OWNER (the default role on register) requires MFA before login succeeds — ADR-002.
+    const preMfaLoginRes = await app.inject({
       method: "POST",
       url: "/auth/login",
       payload: { email: EMAIL, password: PASSWORD },
+    });
+    expect(preMfaLoginRes.statusCode).toBe(409);
+    expect(preMfaLoginRes.json()).toMatchObject({ mfaEnrollmentRequired: true });
+
+    const secret = await enrollMfa(app, EMAIL, PASSWORD);
+
+    const loginRes = await app.inject({
+      method: "POST",
+      url: "/auth/login",
+      payload: { email: EMAIL, password: PASSWORD, mfaCode: currentCode(secret, EMAIL) },
     });
     expect(loginRes.statusCode).toBe(200);
     const setCookie = loginRes.headers["set-cookie"];
@@ -160,6 +199,8 @@ describe("native auth flow (D010 acceptance criteria)", () => {
         },
       });
       await app.inject({ method: "POST", url: "/auth/register", payload: { email: EMAIL, password: PASSWORD } });
+      // MFA enrollment survives a password change — enroll once, up front, with the original password.
+      const secret = await enrollMfa(app, EMAIL, PASSWORD);
 
       const initiateRes = await app.inject({
         method: "POST",
@@ -187,7 +228,7 @@ describe("native auth flow (D010 acceptance criteria)", () => {
       const newLoginRes = await app.inject({
         method: "POST",
         url: "/auth/login",
-        payload: { email: EMAIL, password: newPassword },
+        payload: { email: EMAIL, password: newPassword, mfaCode: currentCode(secret, EMAIL) },
       });
       expect(newLoginRes.statusCode).toBe(200);
 

@@ -19,7 +19,8 @@
     "@smb-os/contracts": "workspace:*",
     "@smb-os/db": "workspace:*",
     "@smb-os/domain": "workspace:*",
-    "fastify": "^5.12.3"
+    "fastify": "^5.12.3",
+    "otpauth": "^9.5.2"
   },
   "devDependencies": {
     "@smb-os/eslint-config": "workspace:*",

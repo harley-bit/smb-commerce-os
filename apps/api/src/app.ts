@@ -5,7 +5,10 @@ import {
   AccountLockedError,
   EmailAlreadyRegisteredError,
   InvalidCredentialsError,
+  InvalidMfaCodeError,
   InvalidResetTokenError,
+  MfaCodeRequiredError,
+  MfaEnrollmentRequiredError,
 } from "@smb-os/domain";
 import { isAllowedOrigin } from "./auth/originCheck.js";
 import { SlidingWindowRateLimiter } from "./auth/rateLimiter.js";
@@ -87,42 +90,100 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     }
   });
 
-  app.post<{ Body: { email?: string; password?: string } }>("/auth/login", async (request, reply) => {
+  app.post<{ Body: { email?: string; password?: string; mfaCode?: string } }>(
+    "/auth/login",
+    async (request, reply) => {
+      const { email, password, mfaCode } = request.body ?? {};
+      if (!email || !password) {
+        return reply.code(400).send({ error: "email and password are required." });
+      }
+
+      const ip = request.ip;
+      if (!loginLimiter.consume(`ip:${ip}`) || !loginLimiter.consume(`account:${email.toLowerCase()}`)) {
+        return reply.code(429).send({ error: "Too many login attempts. Try again later." });
+      }
+
+      try {
+        const result = await authProvider.authenticate(email, password, mfaCode);
+        const session = await authProvider.createSession(
+          result.userId,
+          ip,
+          request.headers["user-agent"] ?? "unknown",
+        );
+        void reply.setCookie(SESSION_COOKIE, session.token, {
+          httpOnly: true,
+          secure: true,
+          sameSite: "strict",
+          path: "/",
+          expires: new Date(session.expiresAt),
+        });
+        return reply.code(200).send({ userId: result.userId, email: result.email });
+      } catch (error) {
+        if (error instanceof InvalidCredentialsError) {
+          return reply.code(401).send({ error: "Invalid email or password." });
+        }
+        if (error instanceof AccountLockedError) {
+          return reply.code(423).send({ error: error.message });
+        }
+        if (error instanceof MfaEnrollmentRequiredError) {
+          return reply.code(409).send({ error: error.message, mfaEnrollmentRequired: true });
+        }
+        if (error instanceof MfaCodeRequiredError) {
+          return reply.code(401).send({ error: error.message, mfaCodeRequired: true });
+        }
+        if (error instanceof InvalidMfaCodeError) {
+          return reply.code(401).send({ error: error.message });
+        }
+        throw error;
+      }
+    },
+  );
+
+  app.post<{ Body: { email?: string; password?: string } }>("/auth/mfa/enroll", async (request, reply) => {
     const { email, password } = request.body ?? {};
     if (!email || !password) {
       return reply.code(400).send({ error: "email and password are required." });
     }
-
     const ip = request.ip;
     if (!loginLimiter.consume(`ip:${ip}`) || !loginLimiter.consume(`account:${email.toLowerCase()}`)) {
-      return reply.code(429).send({ error: "Too many login attempts. Try again later." });
+      return reply.code(429).send({ error: "Too many attempts. Try again later." });
     }
-
     try {
-      const result = await authProvider.authenticate(email, password);
-      const session = await authProvider.createSession(
-        result.userId,
-        ip,
-        request.headers["user-agent"] ?? "unknown",
-      );
-      void reply.setCookie(SESSION_COOKIE, session.token, {
-        httpOnly: true,
-        secure: true,
-        sameSite: "strict",
-        path: "/",
-        expires: new Date(session.expiresAt),
-      });
-      return reply.code(200).send({ userId: result.userId, email: result.email });
+      const enrollment = await authProvider.enrollMfa(email, password);
+      return reply.code(200).send(enrollment);
     } catch (error) {
       if (error instanceof InvalidCredentialsError) {
-        return reply.code(401).send({ error: "Invalid email or password." });
-      }
-      if (error instanceof AccountLockedError) {
-        return reply.code(423).send({ error: error.message });
+        return reply.code(401).send({ error: error.message });
       }
       throw error;
     }
   });
+
+  app.post<{ Body: { email?: string; password?: string; code?: string } }>(
+    "/auth/mfa/confirm",
+    async (request, reply) => {
+      const { email, password, code } = request.body ?? {};
+      if (!email || !password || !code) {
+        return reply.code(400).send({ error: "email, password, and code are required." });
+      }
+      const ip = request.ip;
+      if (!loginLimiter.consume(`ip:${ip}`) || !loginLimiter.consume(`account:${email.toLowerCase()}`)) {
+        return reply.code(429).send({ error: "Too many attempts. Try again later." });
+      }
+      try {
+        await authProvider.confirmMfaEnrollment(email, password, code);
+        return reply.code(200).send({ message: "Multi-factor authentication enabled." });
+      } catch (error) {
+        if (error instanceof InvalidCredentialsError) {
+          return reply.code(401).send({ error: error.message });
+        }
+        if (error instanceof MfaEnrollmentRequiredError || error instanceof InvalidMfaCodeError) {
+          return reply.code(400).send({ error: error.message });
+        }
+        throw error;
+      }
+    },
+  );
 
   app.post("/auth/logout", async (request, reply) => {
     const token = request.cookies[SESSION_COOKIE];
