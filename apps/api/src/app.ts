@@ -1,6 +1,9 @@
+import { randomUUID } from "node:crypto";
+import type { Writable } from "node:stream";
 import cookie from "@fastify/cookie";
-import Fastify, { type FastifyInstance } from "fastify";
+import Fastify, { type FastifyError, type FastifyInstance } from "fastify";
 import type { AuthProvider } from "@smb-os/domain";
+import { problemType, sendProblem } from "./problemDetails.js";
 import {
   AccountLockedError,
   EmailAlreadyRegisteredError,
@@ -32,7 +35,28 @@ export interface BuildAppOptions {
   loginRateLimit?: { limit: number; windowMs: number };
   resetRateLimit?: { limit: number; windowMs: number };
   onResetTokenIssued?: ResetTokenNotifier;
+  /** Test-only hook for asserting on structured log output; production uses stdout. */
+  loggerStream?: Writable | { write: (chunk: string) => void };
 }
+
+const REQUEST_ID_HEADER = "x-request-id";
+
+/**
+ * Fields that must never reach a log line, per this card's security
+ * check ("no PII, tokens, or stack traces in logs or responses"):
+ * credentials, session/reset tokens, and cookies (which carry the
+ * session token).
+ */
+const LOG_REDACT_PATHS = [
+  "req.headers.authorization",
+  "req.headers.cookie",
+  "req.body.password",
+  "req.body.newPassword",
+  "req.body.token",
+  "req.body.mfaCode",
+  "req.body.code",
+  "res.headers['set-cookie']",
+];
 
 /** Default, in-memory-backed native provider — see `./auth/repositories.ts`. */
 export function createDefaultAuthProvider(onResetTokenIssued?: ResetTokenNotifier): AuthProvider {
@@ -56,8 +80,57 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     options.resetRateLimit?.windowMs ?? 60_000,
   );
 
-  const app = Fastify({ logger: false });
+  const app = Fastify({
+    logger: {
+      level: "info",
+      redact: { paths: LOG_REDACT_PATHS, censor: "[REDACTED]" },
+      ...(options.loggerStream ? { stream: options.loggerStream } : {}),
+    },
+    requestIdHeader: REQUEST_ID_HEADER,
+    genReqId: (request) => {
+      const supplied = request.headers[REQUEST_ID_HEADER];
+      return typeof supplied === "string" && supplied.length > 0 ? supplied : randomUUID();
+    },
+  });
   void app.register(cookie);
+
+  app.addHook("onSend", async (request, reply, payload) => {
+    void reply.header(REQUEST_ID_HEADER, request.id);
+    return payload;
+  });
+
+  app.setNotFoundHandler((request, reply) => {
+    sendProblem(
+      request,
+      reply,
+      404,
+      problemType("not-found"),
+      "Not Found",
+      `No route matches ${request.method} ${request.url}.`,
+    );
+  });
+
+  app.setErrorHandler((error: FastifyError, request, reply) => {
+    const status = typeof error.statusCode === "number" ? error.statusCode : 500;
+    // Deliberately excludes error.message and error.stack from the log line: an
+    // application error's message text is developer-written and not guaranteed
+    // free of secrets, so only the stable, non-sensitive name/code are recorded.
+    request.log.error({ err: { name: error.name, code: error.code } }, "request failed");
+    if (status >= 500) {
+      // Never surface an internal error message or stack trace to the client — this card's security check.
+      sendProblem(request, reply, 500, problemType("internal-server-error"), "Internal Server Error");
+      return;
+    }
+    sendProblem(request, reply, status, problemType("bad-request"), error.name || "Bad Request", error.message);
+  });
+
+  app.get("/health", async () => {
+    return { status: "ok" };
+  });
+
+  app.get("/ready", async () => {
+    return { status: "ready" };
+  });
 
   app.addHook("preHandler", async (request, reply) => {
     const method = request.method.toUpperCase();
