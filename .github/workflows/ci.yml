@@ -36,6 +36,10 @@ jobs:
           sudo mv gitleaks /usr/local/bin/gitleaks
           rm gitleaks.tar.gz
 
+      - name: Install syft
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin v1.51.1
+
       - name: Install dependencies (frozen lockfile)
         run: pnpm install --frozen-lockfile
 
@@ -62,10 +66,6 @@ jobs:
 
       - name: Secret scan
         run: gitleaks detect --source . --redact --exit-code 1
-
-      - name: Install syft
-        run: |
-          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin v1.51.1
 
       - name: Generate SBOM (CycloneDX)
         run: syft dir:. -o cyclonedx-json=sbom.json
