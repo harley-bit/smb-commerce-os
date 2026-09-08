@@ -270,6 +270,14 @@ export {
   type CreateCheckoutIntentInput,
   type CheckoutIntentResult,
 } from "./services/CheckoutPaymentService.js";
+export { SimulatedDepositHoldProvider } from "./payments/SimulatedDepositHoldProvider.js";
+export {
+  DepositAuthorizationService,
+  MissingHoldExpiryError,
+  OrderLineHasNoDepositError,
+  type PlaceDepositHoldInput,
+  type PlaceDepositHoldResult,
+} from "./services/DepositAuthorizationService.js";
 export {
   verifyStripeWebhookSignature,
   type WebhookVerificationOptions,
