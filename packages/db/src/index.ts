@@ -36,3 +36,12 @@ export {
   type MerchantUser,
   type MerchantUserRole,
 } from "./repositories/MerchantUserRepository.js";
+export {
+  ListingRepository,
+  type Listing,
+  type ListingMode,
+  type ListingStatus,
+  type CreateListingInput,
+  type UpdateListingInput,
+} from "./repositories/ListingRepository.js";
+export { ListingService } from "./services/ListingService.js";
