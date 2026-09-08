@@ -34,6 +34,17 @@ export interface CreateReservationInput {
   createdAt: string;
 }
 
+/** Thrown by `createGuarded` when the requested interval overlaps an existing blocking reservation. */
+export class ReservationConflictError extends Error {
+  constructor(
+    public readonly subjectType: ReservationSubjectType,
+    public readonly subjectId: string,
+  ) {
+    super(`Reservation conflict: ${subjectType} ${subjectId} already has an overlapping blocking reservation`);
+    this.name = "ReservationConflictError";
+  }
+}
+
 /**
  * `docs/design/05` — the only states that participate in overlap checks.
  * A `HELD` row additionally requires `expiresAt > asOf`: an unswept expired
@@ -63,6 +74,43 @@ export class ReservationRepository extends TenantScopedRepository<typeof reserva
   }
 
   create: RepositoryMethod<[input: CreateReservationInput], string> = (ctx, input) => {
+    return this.insertRow(ctx, input);
+  };
+
+  /**
+   * `docs/design/05` C1 / `docs/cards/D050.md` — the real write path for
+   * creating a blocking reservation. `sqlite.transaction(...).immediate()`
+   * opens with `BEGIN IMMEDIATE`, taking the write lock *before* the overlap
+   * check runs, so a second concurrent caller cannot begin its own write
+   * transaction until the first commits — it is therefore guaranteed to see
+   * the first caller's committed row, never a stale pre-commit view. This is
+   * the property a deferred transaction cannot provide (see
+   * `ReservationRepository.write-path.test.ts`): under `journal_mode = WAL`,
+   * a deferred transaction that already read stale data doesn't silently
+   * double-book, but it does fail with an opaque, untyped
+   * `SQLITE_BUSY_SNAPSHOT` rather than this method's typed, deterministic
+   * `ReservationConflictError`.
+   */
+  createGuarded: RepositoryMethod<[input: CreateReservationInput], string> = (ctx, input) => {
+    const attempt = this.conn.sqlite.transaction((): string => {
+      const blocking = this.findBlocking(
+        ctx,
+        input.subjectType,
+        input.subjectId,
+        input.startsAt,
+        input.endsAt,
+        input.createdAt,
+      );
+      if (blocking.length > 0) {
+        throw new ReservationConflictError(input.subjectType, input.subjectId);
+      }
+      return this.insertRow(ctx, input);
+    });
+
+    return attempt.immediate();
+  };
+
+  private insertRow(ctx: TenantContext, input: CreateReservationInput): string {
     const id = generateUuidV7();
     this.conn.db
       .insert(reservations)
@@ -76,7 +124,7 @@ export class ReservationRepository extends TenantScopedRepository<typeof reserva
       })
       .run();
     return id;
-  };
+  }
 
   findBlocking: RepositoryMethod<
     [

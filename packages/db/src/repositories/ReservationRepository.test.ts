@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { createConnection, type Connection } from "../connection.js";
 import { runSqliteMigrations } from "../migrate.js";
 import * as sqliteSchema from "../schema/sqlite.js";
-import { ReservationRepository } from "./ReservationRepository.js";
+import { ReservationConflictError, ReservationRepository } from "./ReservationRepository.js";
 
 describe("ReservationRepository", () => {
   let connection: Connection;
@@ -228,5 +228,101 @@ describe("ReservationRepository", () => {
       .join(" | ");
 
     expect(plan).toContain("reservations_subject_interval_idx");
+  });
+
+  it("createGuarded() inserts when no blocking reservation overlaps (D050)", () => {
+    const ctx = createTenantContext(merchantA);
+
+    const id = repo.createGuarded(ctx, {
+      subjectType: "RESOURCE",
+      subjectId: resourceA,
+      startsAt: "2026-10-01T09:00:00.000Z",
+      endsAt: "2026-10-01T10:00:00.000Z",
+      quantity: 1,
+      state: "HELD",
+      expiresAt: "2026-10-01T09:15:00.000Z",
+      createdAt: "2026-10-01T08:45:00.000Z",
+    });
+
+    const rows = repo.findBlocking(
+      ctx,
+      "RESOURCE",
+      resourceA,
+      "2026-10-01T09:00:00.000Z",
+      "2026-10-01T10:00:00.000Z",
+      "2026-10-01T08:45:00.000Z",
+    );
+    expect(rows.map((r) => r.id)).toEqual([id]);
+  });
+
+  it("createGuarded() rejects a reservation that overlaps an existing blocking one, and writes nothing (D050)", () => {
+    const ctx = createTenantContext(merchantA);
+    repo.createGuarded(ctx, {
+      subjectType: "RESOURCE",
+      subjectId: resourceA,
+      startsAt: "2026-10-01T09:00:00.000Z",
+      endsAt: "2026-10-01T10:00:00.000Z",
+      quantity: 1,
+      state: "CONFIRMED",
+      createdAt: "2026-10-01T08:45:00.000Z",
+    });
+
+    expect(() =>
+      repo.createGuarded(ctx, {
+        subjectType: "RESOURCE",
+        subjectId: resourceA,
+        startsAt: "2026-10-01T09:30:00.000Z",
+        endsAt: "2026-10-01T10:30:00.000Z",
+        quantity: 1,
+        state: "CONFIRMED",
+        createdAt: "2026-10-01T09:00:00.000Z",
+      }),
+    ).toThrow(ReservationConflictError);
+
+    const rows = repo.findBlocking(
+      ctx,
+      "RESOURCE",
+      resourceA,
+      "2026-10-01T09:00:00.000Z",
+      "2026-10-01T11:00:00.000Z",
+      "2026-10-01T09:00:00.000Z",
+    );
+    expect(rows).toHaveLength(1);
+  });
+
+  it("createGuarded() is tenant-scoped — merchant B booking the same-shaped subject id does not conflict with merchant A's booking", () => {
+    const ctxA = createTenantContext(merchantA);
+    const ctxB = createTenantContext(merchantB);
+
+    const idA = repo.createGuarded(ctxA, {
+      subjectType: "RESOURCE",
+      subjectId: resourceA,
+      startsAt: "2026-10-01T09:00:00.000Z",
+      endsAt: "2026-10-01T10:00:00.000Z",
+      quantity: 1,
+      state: "CONFIRMED",
+      createdAt: "2026-10-01T08:45:00.000Z",
+    });
+    const idB = repo.createGuarded(ctxB, {
+      subjectType: "RESOURCE",
+      subjectId: resourceB,
+      startsAt: "2026-10-01T09:00:00.000Z",
+      endsAt: "2026-10-01T10:00:00.000Z",
+      quantity: 1,
+      state: "CONFIRMED",
+      createdAt: "2026-10-01T08:45:00.000Z",
+    });
+
+    expect(idA).not.toEqual(idB);
+    expect(
+      repo.findBlocking(
+        ctxA,
+        "RESOURCE",
+        resourceB,
+        "2026-10-01T09:00:00.000Z",
+        "2026-10-01T10:00:00.000Z",
+        "2026-10-01T08:45:00.000Z",
+      ),
+    ).toEqual([]);
   });
 });

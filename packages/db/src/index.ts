@@ -114,3 +114,11 @@ export {
   verifyAuditChain,
   type AuditChainVerificationResult,
 } from "./audit/verifyChain.js";
+export {
+  ReservationRepository,
+  ReservationConflictError,
+  type Reservation,
+  type ReservationSubjectType,
+  type ReservationState,
+  type CreateReservationInput,
+} from "./repositories/ReservationRepository.js";
