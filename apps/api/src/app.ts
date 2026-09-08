@@ -3,7 +3,9 @@ import type { Writable } from "node:stream";
 import cookie from "@fastify/cookie";
 import Fastify, { type FastifyError, type FastifyInstance } from "fastify";
 import type { AuthProvider } from "@smb-os/domain";
+import { createConnection as createDbConnection, type Connection } from "@smb-os/db";
 import { problemType, sendProblem } from "./problemDetails.js";
+import { registerListingRoutes } from "./routes/listings.js";
 import {
   AccountLockedError,
   EmailAlreadyRegisteredError,
@@ -44,6 +46,17 @@ export interface BuildAppOptions {
   loggerStream?: Writable | { write: (chunk: string) => void };
   /** Injectable for tests; defaults to a real but unwired resolver — see `./auth/authenticate.ts`. */
   merchantMembershipResolver?: MerchantMembershipResolver;
+  /**
+   * `packages/db` connection backing tenant-scoped catalog routes (currently
+   * just `./routes/listings.ts`). Defaults to a fresh in-memory SQLite
+   * connection, migrated lazily on first route call — same honest gap as
+   * `merchantMembershipResolver`'s default: unless a real, shared
+   * connection is passed in, this default is disconnected from whatever
+   * connection (if any) backs the membership resolver, so nothing will
+   * actually resolve as a member in a from-scratch default `buildApp()`.
+   * Real end-to-end DB wiring for `apps/api` is still a future card.
+   */
+  connection?: Connection;
 }
 
 const REQUEST_ID_HEADER = "x-request-id";
@@ -106,6 +119,9 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     authProvider,
     options.merchantMembershipResolver ?? createDefaultMembershipResolver(),
   );
+
+  const connection = options.connection ?? createDbConnection(":memory:");
+  registerListingRoutes(app, connection);
 
   app.addHook("onSend", async (request, reply, payload) => {
     void reply.header(REQUEST_ID_HEADER, request.id);
