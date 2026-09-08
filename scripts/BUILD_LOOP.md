@@ -33,37 +33,53 @@ Output streams to the terminal and is also saved per-card under
 The loop deliberately **stops** rather than guessing on 3, 4, and 5 — none of
 those are safe to paper over automatically.
 
-## Scheduling on macOS
+## What's actually scheduled right now
 
-launchd is the native mechanism and survives reboots better than cron. Example
-`~/Library/LaunchAgents/com.smbcos.buildloop.plist` (runs every 30 minutes;
-each run is a no-op via the PID lock if the previous one is still going, and a
-no-op via the exit-code table above if there's nothing safe to do):
+A LaunchAgent at `~/Library/LaunchAgents/com.smbcos.buildloop.plist` fires
+every 15 minutes (`StartInterval` 900) plus once immediately on load
+(`RunAtLoad`). It runs **only** `/usr/bin/osascript`, telling Terminal to open
+a window and run `scripts/open_build_loop_terminal.sh` inside it.
 
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key><string>com.smbcos.buildloop</string>
-  <key>ProgramArguments</key>
-  <array>
-    <string>/Users/harleybarrales/Documents/Git Code Base/smb-commerce-os/scripts/run_build_loop.sh</string>
-  </array>
-  <key>StartInterval</key><integer>1800</integer>
-  <key>StandardOutPath</key><string>/tmp/smbcos-buildloop.out.log</string>
-  <key>StandardErrorPath</key><string>/tmp/smbcos-buildloop.err.log</string>
-</dict>
-</plist>
+**Why the indirection through osascript/Terminal:** macOS blocks a headless
+launchd process from reading anything under `~/Documents/...` at all (a TCC
+privacy protection on the Documents folder) — a launchd job that tried to
+exec a script or even `ls` this repo directly failed with `Operation not
+permitted`, no prompt, no way around it from a background process. Terminal,
+as a normal foreground app, isn't blocked the same way. So launchd's only
+job is "open Terminal"; everything else — the lock check, the dry-run check,
+running the actual loop — happens inside `open_build_loop_terminal.sh`,
+executed by Terminal's own shell, not launchd's.
+
+`open_build_loop_terminal.sh` checks the PID lock and does a `--dry-run`
+before committing to a window: if another run is already active or there's no
+current card, it prints one line and exits — the window stays open (harmless,
+just an idle prompt) rather than closing itself, since closing it
+programmatically risks touching windows that aren't ours. If there's a real
+card, it runs `python3 scripts/run_build_loop.py --max-cards 3` in that same
+window so you can watch it live.
+
+Useful commands:
+
+```bash
+launchctl print gui/$(id -u)/com.smbcos.buildloop   # status, last exit code
+launchctl bootout gui/$(id -u)/com.smbcos.buildloop # stop/unload
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.smbcos.buildloop.plist  # reload
 ```
 
-Load it with `launchctl load ~/Library/LaunchAgents/com.smbcos.buildloop.plist`.
-Unload with `launchctl unload` when you want to pause the loop entirely.
+To change the cadence, edit `StartInterval` (seconds) in the plist, then
+bootout + bootstrap to reload it.
 
-Cron alternative (`crontab -e`), same cadence:
+## Fully headless alternative (no visible window)
+
+`scripts/run_build_loop.sh` (redirects all output to
+`scripts/loop_runs/cron.log`) still works as a plain cron entry if you'd
+rather not have Terminal windows appear at all — same TCC caveat does not
+apply to `cron` jobs the same way `launchd` background agents hit it in
+practice, but if you see the same `Operation not permitted` failure from
+cron, route it through the same osascript/Terminal indirection above.
 
 ```
-*/30 * * * * /Users/harleybarrales/Documents/Git\ Code\ Base/smb-commerce-os/scripts/run_build_loop.sh
+*/15 * * * * /Users/harleybarrales/Documents/Git\ Code\ Base/smb-commerce-os/scripts/run_build_loop.sh
 ```
 
 ## Notes
