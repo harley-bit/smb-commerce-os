@@ -2,8 +2,9 @@
 """Sync docs/BUILD_CALENDAR.md (source of truth) into the human-facing
 docs/implementation_calendar/build_calendar.xlsx dashboard.
 
-Only touches the Status (J) and Notes (L) columns on the Daily Plan sheet.
-Never touches the Card (M) / Log (N) hyperlink columns or any other sheet.
+Only touches the Status (J), Notes (L), and Est. Duration (O) columns on
+the Daily Plan sheet. Never touches the Card (M) / Log (N) hyperlink
+columns or any other sheet.
 
 Run after closing out a card:
     python3 scripts/sync_calendar_xlsx.py
@@ -21,7 +22,8 @@ XLSX_PATH = REPO / "docs" / "implementation_calendar" / "build_calendar.xlsx"
 ROW_RE = re.compile(
     r"\|\s*(?:<a id=\"(?P<anchor>d\d+)\"></a>)?(?P<day>D\d+)\s*\|"
     r"\s*(?P<ph>[^|]*)\|\s*(?P<epic>[^|]*)\|\s*(?P<task>[^|]*)\|"
-    r"\s*(?P<gate>[^|]*)\|\s*(?P<status>[^|]*)\|\s*(?P<card>[^|]*)\|\s*(?P<log>[^|]*)\|"
+    r"\s*(?P<gate>[^|]*)\|\s*(?P<duration>[^|]*)\|\s*(?P<status>[^|]*)\|"
+    r"\s*(?P<card>[^|]*)\|\s*(?P<log>[^|]*)\|"
 )
 
 
@@ -36,6 +38,7 @@ def parse_markdown_calendar():
         rows[day] = {
             "status": m.group("status").strip(),
             "log": m.group("log").strip(),
+            "duration": m.group("duration").strip(),
         }
     return rows
 
@@ -63,6 +66,7 @@ def main():
             continue
         status_cell = ws.cell(row=day_cell.row, column=10)  # J
         note_cell = ws.cell(row=day_cell.row, column=12)    # L
+        duration_cell = ws.cell(row=day_cell.row, column=15)  # O
         if status_cell.value != record["status"]:
             status_cell.value = record["status"]
             updated += 1
@@ -71,6 +75,9 @@ def main():
             pass  # leave Notes untouched until there's something real to say
         else:
             note_cell.value = note_text
+        if record["duration"] and duration_cell.value != record["duration"]:
+            duration_cell.value = record["duration"]
+            updated += 1
 
     wb.save(XLSX_PATH)
     print(f"Synced {updated} status change(s) from {MD_PATH.name} into {XLSX_PATH}")

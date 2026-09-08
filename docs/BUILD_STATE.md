@@ -3,6 +3,7 @@
 **Last updated:** 2026-09-07 (repo bootstrap + calendar generated)
 **Execution model:** token-maxing — sessions run back-to-back until the account's usage limit is hit, then resume automatically once it refreshes (see `docs/design/12_daily_build_protocol.md` and the "Token-maxing execution" note in `CLAUDE.md`). Elapsed calendar time is therefore driven by usage-limit cadence, not a fixed days-per-week number. **Day ID is the only reliable sequence marker — do not infer progress from dates.**
 **Projected MVP gate (G7):** provisional only until real throughput is observed over the first ~10 cards. See `docs/BUILD_CALENDAR.md` for the full sequence.
+**Per-card duration estimates:** every row in `docs/BUILD_CALENDAR.md`, the xlsx dashboard, and each `docs/cards/{DAY_ID}.md` now carries an "Est. Duration" figure — a heuristic planning estimate (by phase, weighted up for concurrency/deposit/payment/gate-review complexity) for an AI-assisted session, not a human day and not a commitment. Sum across all 176 cards is ~473.5 hours. **Treat this the same as the projected MVP gate date: recalibrate against real `docs/logs/` actual-effort data once cards start closing, don't defend the original number.**
 
 ## Current phase
 

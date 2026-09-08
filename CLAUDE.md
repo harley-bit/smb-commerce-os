@@ -12,7 +12,7 @@ Specifically **out of bounds by default**: fundraising plans, IP/liability struc
 
 1. This file.
 2. `docs/BUILD_STATE.md` — current phase, current card ID, status, carried-over notes from the last session.
-3. `docs/cards/{DAY_ID}.md` — the one card that's current. It is self-contained: task, deliverable, acceptance criteria, security check, and the exact prompt for that unit of work.
+3. `docs/cards/{DAY_ID}.md` — the one card that's current. It is self-contained: task, deliverable, acceptance criteria, security check, an estimated build duration (a planning figure, not a commitment), and the exact prompt for that unit of work.
 4. Only if the card references it: the **one** design doc in `docs/design/` it belongs to (see the phase table in `01_phasing_and_mvp_definition.md`). Do not re-read all 14 design docs each session — that is exactly the context bloat this file exists to prevent.
 
 ## Calendar, cards, and logs — the four-file convention
