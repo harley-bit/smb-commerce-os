@@ -14,6 +14,7 @@ export * from "./reservations/reservationStateMachine.js";
 export * from "./reservations/bufferExpansion.js";
 export * from "./reservations/unitAllocator.js";
 export * from "./rentals/conditionGrade.js";
+export * from "./rentals/damageClaimStateMachine.js";
 
 export function workspaceGraphMarker(): string {
   return "@smb-os/domain";
