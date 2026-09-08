@@ -96,6 +96,15 @@ export class PaymentRepository extends TenantScopedRepository<typeof payments.me
       .get() as Payment | undefined;
   };
 
+  /** `docs/cards/D096.md` — the refund service's lookup for an order's original charge (and any prior refunds). */
+  listByOrderId: RepositoryMethod<[orderId: string], Payment[]> = (ctx, orderId) => {
+    return this.conn.db
+      .select()
+      .from(payments)
+      .where(and(this.scope(ctx), eq(payments.orderId, orderId)))
+      .all() as Payment[];
+  };
+
   /**
    * `docs/design/06` "Webhook handling" / `docs/cards/D093.md` — ordering
    * tolerance for a payment's status. Providers retry and deliver out of

@@ -11,6 +11,7 @@ const ALL_ACTIONS: MerchantAction[] = [
   "bookings:manage",
   "condition_reports:manage",
   "reports:view",
+  "payments:refund",
   "payouts:manage",
   "roles:assign",
 ];
@@ -32,6 +33,7 @@ describe("rbac role matrix", () => {
       "bookings:manage",
       "condition_reports:manage",
       "reports:view",
+      "payments:refund",
     ];
     const forbidden: MerchantAction[] = ["payouts:manage", "roles:assign"];
     for (const action of permitted) {
@@ -54,6 +56,7 @@ describe("rbac role matrix", () => {
       "catalog:manage",
       "inventory:manage",
       "reports:view",
+      "payments:refund",
       "payouts:manage",
       "roles:assign",
     ];
@@ -72,6 +75,7 @@ describe("rbac role matrix", () => {
       "inventory:manage",
       "bookings:manage",
       "condition_reports:manage",
+      "payments:refund",
       "payouts:manage",
       "roles:assign",
     ];

@@ -23,6 +23,7 @@ export type MerchantAction =
   | "bookings:manage"
   | "condition_reports:manage"
   | "reports:view"
+  | "payments:refund"
   | "payouts:manage"
   | "roles:assign";
 
@@ -68,6 +69,7 @@ const ADMIN_ACTIONS: readonly MerchantAction[] = [
   "bookings:manage",
   "condition_reports:manage",
   "reports:view",
+  "payments:refund",
 ];
 
 const OWNER_ACTIONS: readonly MerchantAction[] = [...ADMIN_ACTIONS, "payouts:manage", "roles:assign"];

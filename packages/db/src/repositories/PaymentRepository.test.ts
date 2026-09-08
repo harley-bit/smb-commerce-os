@@ -143,6 +143,27 @@ describe("PaymentRepository", () => {
     expect(payments.findByProviderRef(ctxA, "STRIPE", "pi_isolated")).toMatchObject({ id: idA });
   });
 
+  it("lists every payment for an order — the refund service's charge lookup (D096)", () => {
+    const ctxA = createTenantContext(merchantA);
+    const chargeId = createPayment("pi_charge_for_order");
+    const refundId = payments.create(ctxA, {
+      orderId: orderA,
+      provider: "STRIPE",
+      providerRef: "re_1",
+      kind: "REFUND",
+      amountMinor: 500,
+      currency: "USD",
+      status: "SUCCEEDED",
+      createdAt: "2026-09-08T01:00:00.000Z",
+    });
+
+    const rows = payments.listByOrderId(ctxA, orderA);
+    expect(rows.map((row) => row.id).sort()).toEqual([chargeId, refundId].sort());
+
+    const ctxB = createTenantContext(merchantB);
+    expect(payments.listByOrderId(ctxB, orderA)).toEqual([]);
+  });
+
   describe("applyProviderEvent — D093 webhook ordering tolerance", () => {
     it("applies a status update from a provider event and records its timestamp", () => {
       const ctx = createTenantContext(merchantA);

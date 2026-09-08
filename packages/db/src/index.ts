@@ -288,3 +288,10 @@ export {
   type WebhookEvent,
   type RecordWebhookEventInput,
 } from "./repositories/WebhookEventRepository.js";
+export { SimulatedRefundProvider } from "./payments/SimulatedRefundProvider.js";
+export {
+  RefundService,
+  NoChargeToRefundError,
+  type RefundOrderLineInput,
+  type RefundOrderLineResult,
+} from "./services/RefundService.js";
