@@ -36,7 +36,7 @@ those are safe to paper over automatically.
 ## What's actually scheduled right now
 
 A LaunchAgent at `~/Library/LaunchAgents/com.smbcos.buildloop.plist` fires
-every 15 minutes (`StartInterval` 900) plus once immediately on load
+every hour (`StartInterval` 3600) plus once immediately on load
 (`RunAtLoad`). It runs **only** `/usr/bin/osascript`, telling Terminal to open
 a window and run `scripts/open_build_loop_terminal.sh` inside it.
 
@@ -55,7 +55,7 @@ before committing to a window: if another run is already active or there's no
 current card, it prints one line and exits — the window stays open (harmless,
 just an idle prompt) rather than closing itself, since closing it
 programmatically risks touching windows that aren't ours. If there's a real
-card, it runs `python3 scripts/run_build_loop.py --max-cards 3` in that same
+card, it runs `python3 scripts/run_build_loop.py --max-cards 6` in that same
 window so you can watch it live.
 
 Useful commands:
