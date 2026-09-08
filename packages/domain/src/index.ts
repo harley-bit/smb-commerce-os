@@ -1,4 +1,5 @@
 export * from "./auth/AuthProvider.js";
+export * from "./auth/rbac.js";
 export * from "./tenancy/TenantContext.js";
 export * from "./utils/uuid.js";
 export * from "./utils/money.js";
