@@ -85,6 +85,10 @@ export class RentalReservationService {
       throw new VariantNotRentalError(input.variantId);
     }
 
+    // `docs/cards/D068.md` invariant I4: SOLD/RETIRED (and MAINTENANCE/LOST)
+    // units are excluded here, so a variant with zero AVAILABLE units left
+    // falls through to `selectUnitForAllocation`'s `NoAvailableUnitError`
+    // below — the same rejection path as a pure scheduling conflict.
     const candidates: AllocationCandidate[] = this.inventoryUnits
       .listByVariant(ctx, input.variantId)
       .filter((unit) => unit.status === "AVAILABLE")

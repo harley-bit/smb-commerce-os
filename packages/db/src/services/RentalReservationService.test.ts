@@ -3,9 +3,11 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { createConnection, type Connection } from "../connection.js";
 import { runSqliteMigrations } from "../migrate.js";
 import * as sqliteSchema from "../schema/sqlite.js";
-import { InventoryUnitRepository } from "../repositories/InventoryUnitRepository.js";
+import { AuditLogRepository } from "../repositories/AuditLogRepository.js";
+import { InventoryUnitRepository, type InventoryUnitStatus } from "../repositories/InventoryUnitRepository.js";
 import { ReservationRepository } from "../repositories/ReservationRepository.js";
 import { VariantRepository } from "../repositories/VariantRepository.js";
+import { InventoryUnitService } from "./InventoryUnitService.js";
 import {
   MissingIdempotencyKeyError,
   RentalReservationService,
@@ -158,6 +160,45 @@ describe("RentalReservationService", () => {
         createdAt: "2026-10-01T08:47:00.000Z",
       }),
     ).toThrow(NoAvailableUnitError);
+  });
+
+  describe("invariant I4 — sold or retired unit cannot be reserved (D068)", () => {
+    it.each<InventoryUnitStatus>(["SOLD", "RETIRED"])(
+      "rejects the reservation once the only unit is %s",
+      (terminalStatus) => {
+        const ctx = createTenantContext(merchantA);
+        const unitService = new InventoryUnitService(
+          new InventoryUnitRepository(connection),
+          new AuditLogRepository(connection),
+        );
+        // unit1 and unit2 both start AVAILABLE; retire both so the variant
+        // has zero units left that createRentalReservation() could select.
+        unitService.transitionStatus(ctx, "OWNER", {
+          unitId: unit1,
+          newStatus: terminalStatus,
+          actorUserId: "owner-1",
+          note: terminalStatus === "SOLD" ? "sold at register" : "retired from fleet",
+          occurredAt: "2026-09-30T00:00:00.000Z",
+        });
+        unitService.transitionStatus(ctx, "OWNER", {
+          unitId: unit2,
+          newStatus: terminalStatus,
+          actorUserId: "owner-1",
+          note: terminalStatus === "SOLD" ? "sold at register" : "retired from fleet",
+          occurredAt: "2026-09-30T00:00:00.000Z",
+        });
+
+        expect(() =>
+          service.createRentalReservation(ctx, "STAFF", {
+            variantId: rentalVariant,
+            startsAt: "2026-10-01T09:00:00.000Z",
+            endsAt: "2026-10-01T10:00:00.000Z",
+            idempotencyKey: `idem-${terminalStatus}`,
+            createdAt: "2026-10-01T08:45:00.000Z",
+          }),
+        ).toThrow(NoAvailableUnitError);
+      },
+    );
   });
 
   it("security: createRentalReservation() requires an Idempotency-Key", () => {
