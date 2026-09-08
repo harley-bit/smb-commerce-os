@@ -31,7 +31,7 @@ Each control names the artifact that evidences it and the phase that produces it
 | Risk register maintained | `14_risk_register_technical.md`, reviewed weekly (`13`) | 0, ongoing |
 | Roles and responsibilities | RBAC matrix (`07`) + policy | 0 |
 | Sub-processor inventory | `/docs/compliance/subprocessors.md` | 0 |
-| Change management | Pull request history, branch protection settings, ADRs | 0, ongoing |
+| Change management | Pull request history, branch protection settings, ADRs — process documented in `17_change_management_policy.md` | 0, ongoing |
 
 ### Identify (ID)
 
