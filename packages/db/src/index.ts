@@ -131,6 +131,13 @@ export {
   type AbandonmentReporter,
 } from "./jobs/HoldExpirySweeper.js";
 export {
+  releaseCompletedDepositsSqlite,
+  releaseCompletedDepositsPg,
+  type DepositAutoReleaseResult,
+  type DepositReleaseCandidate,
+  type DepositReleaseCustomerNotifier,
+} from "./jobs/DepositAutoReleaseJob.js";
+export {
   ResourceRepository,
   type Resource,
   type ResourceKind,
