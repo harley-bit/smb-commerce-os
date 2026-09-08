@@ -7,6 +7,13 @@ set -e
 message_file="$1"
 subject_line=$(head -n 1 "$message_file")
 
+# Git's own auto-generated merge-commit subject ("Merge branch 'x' into y")
+# can never match Conventional Commits and should not be rewritten -- exempt
+# it rather than block every merge.
+if printf '%s' "$subject_line" | grep -qE '^Merge (branch|remote-tracking branch|pull request) '; then
+  exit 0
+fi
+
 pattern='^(feat|fix|docs|style|refactor|perf|test|chore|ci|build|revert)(\([a-z0-9./_-]+\))?: .+'
 
 if ! printf '%s' "$subject_line" | grep -qE "$pattern"; then
