@@ -1,5 +1,5 @@
 import type { Pool } from "pg";
-import { generateUuidV7, type TenantContext } from "@smb-os/domain";
+import { expandIntervalForBuffer, generateUuidV7, type TenantContext } from "@smb-os/domain";
 import {
   ReservationConflictError,
   type CreateReservationInput,
@@ -24,9 +24,20 @@ export class PgReservationRepository {
 
   async createGuarded(
     ctx: TenantContext,
-    input: CreateReservationInput,
+    rawInput: CreateReservationInput,
     capacity = 1,
   ): Promise<string> {
+    // `docs/design/05` "Turnaround buffer" / `docs/cards/D064.md` — expand
+    // the requested `endsAt` by `bufferMinutes` before the overlap check and
+    // the insert, and snapshot `bufferMinutes` onto the row, same as
+    // `ReservationRepository.createGuarded` (SQLite).
+    const expanded = expandIntervalForBuffer(rawInput.startsAt, rawInput.endsAt, rawInput.bufferMinutes);
+    const input: CreateReservationInput = {
+      ...rawInput,
+      startsAt: expanded.startsAt,
+      endsAt: expanded.endsAt,
+      bufferMinutes: rawInput.bufferMinutes ?? null,
+    };
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
@@ -96,8 +107,8 @@ export class PgReservationRepository {
       const id = generateUuidV7();
       await client.query(
         `INSERT INTO "reservations"
-           (id, merchant_id, order_line_id, subject_type, subject_id, starts_at, ends_at, quantity, state, expires_at, created_at, released_at, idempotency_key, created_by_account_id, created_by_ip)
-         VALUES ($1, $2, NULL, $3, $4, $5, $6, $7, $8, $9, $10, NULL, $11, $12, $13)`,
+           (id, merchant_id, order_line_id, subject_type, subject_id, starts_at, ends_at, quantity, state, expires_at, created_at, released_at, idempotency_key, created_by_account_id, created_by_ip, buffer_minutes)
+         VALUES ($1, $2, NULL, $3, $4, $5, $6, $7, $8, $9, $10, NULL, $11, $12, $13, $14)`,
         [
           id,
           ctx.merchantId,
@@ -112,6 +123,7 @@ export class PgReservationRepository {
           input.idempotencyKey ?? null,
           input.createdByAccountId ?? null,
           input.createdByIp ?? null,
+          input.bufferMinutes ?? null,
         ],
       );
 

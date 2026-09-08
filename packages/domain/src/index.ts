@@ -10,6 +10,7 @@ export * from "./utils/availabilityRule.js";
 export * from "./utils/availabilityExceptions.js";
 export * from "./utils/freeIntervals.js";
 export * from "./reservations/reservationStateMachine.js";
+export * from "./reservations/bufferExpansion.js";
 
 export function workspaceGraphMarker(): string {
   return "@smb-os/domain";

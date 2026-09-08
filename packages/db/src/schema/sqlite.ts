@@ -359,6 +359,12 @@ export const reservations = sqliteTable(
     // tests) have neither; an anonymous cart has an IP but no account.
     createdByAccountId: text("created_by_account_id"),
     createdByIp: text("created_by_ip"),
+    // D064 — the rental-variant turnaround buffer this reservation's
+    // `ends_at` was expanded by at write time (`docs/design/05` "Turnaround
+    // buffer"). Snapshotted here, not re-derived from the variant, so a
+    // later change to the variant's `buffer_minutes` cannot retroactively
+    // alter an already-written booking's effective interval.
+    bufferMinutes: integer("buffer_minutes"),
   },
   (table) => [
     index("reservations_subject_interval_idx").on(

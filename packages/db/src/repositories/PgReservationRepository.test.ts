@@ -334,4 +334,60 @@ describe.skipIf(!process.env.DATABASE_URL)("PgReservationRepository.createGuarde
       await connection.pool.end();
     }
   });
+
+  /**
+   * `docs/design/05` "Turnaround buffer" / `docs/cards/D064.md` — same
+   * behavior as `ReservationRepository.createGuarded` (SQLite): the
+   * requested `endsAt` is expanded by `bufferMinutes` before both the
+   * overlap check and the insert, and `bufferMinutes` itself is stored on
+   * the row.
+   */
+  it("D064: expands endsAt by bufferMinutes at write time and stores bufferMinutes on the row", async () => {
+    const connection = await freshConnection(1);
+    try {
+      const repo = new PgReservationRepository(connection.pool);
+      const ctx = createTenantContext(merchantId);
+
+      const id = await repo.createGuarded(
+        ctx,
+        {
+          subjectType: "RESOURCE",
+          subjectId: resourceId,
+          startsAt: "2026-10-01T09:00:00.000Z",
+          endsAt: "2026-10-01T10:00:00.000Z",
+          quantity: 1,
+          state: "CONFIRMED",
+          createdAt: "2026-10-01T08:45:00.000Z",
+          bufferMinutes: 30,
+        },
+        1,
+      );
+
+      const rows = await connection.db.select().from(pgSchema.reservations);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.id).toBe(id);
+      expect(rows[0]?.endsAt.toISOString()).toBe("2026-10-01T10:30:00.000Z");
+      expect(rows[0]?.bufferMinutes).toBe(30);
+
+      // The buffer expanded this booking's effective end to 10:30, so a
+      // second booking starting at the unbuffered 10:00 now conflicts.
+      await expect(
+        repo.createGuarded(
+          ctx,
+          {
+            subjectType: "RESOURCE",
+            subjectId: resourceId,
+            startsAt: "2026-10-01T10:00:00.000Z",
+            endsAt: "2026-10-01T11:00:00.000Z",
+            quantity: 1,
+            state: "CONFIRMED",
+            createdAt: "2026-10-01T08:46:00.000Z",
+          },
+          1,
+        ),
+      ).rejects.toThrow(ReservationConflictError);
+    } finally {
+      await connection.pool.end();
+    }
+  });
 });

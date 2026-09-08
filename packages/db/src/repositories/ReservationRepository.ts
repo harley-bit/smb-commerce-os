@@ -1,4 +1,9 @@
-import { applyReservationEvent, generateUuidV7, type TenantContext } from "@smb-os/domain";
+import {
+  applyReservationEvent,
+  expandIntervalForBuffer,
+  generateUuidV7,
+  type TenantContext,
+} from "@smb-os/domain";
 import { and, count as sqlCount, eq, gt, lt, or, type SQLWrapper } from "drizzle-orm";
 import type { AvailabilityCache } from "../cache/AvailabilityCache.js";
 import type { Connection } from "../connection.js";
@@ -24,6 +29,7 @@ export interface Reservation {
   idempotencyKey: string | null;
   createdByAccountId: string | null;
   createdByIp: string | null;
+  bufferMinutes: number | null;
 }
 
 export interface CreateReservationInput {
@@ -41,6 +47,29 @@ export interface CreateReservationInput {
   /** `docs/cards/D062.md` — who/what asked for this hold, for the concurrent-hold caps. */
   createdByAccountId?: string;
   createdByIp?: string;
+  /**
+   * `docs/design/05` "Turnaround buffer" / `docs/cards/D064.md` — the
+   * rental variant's `buffer_minutes` at the moment this reservation is
+   * created. `endsAt` above is the *requested* end; `createGuarded`/`create`
+   * expand it by this amount before it is stored, and store this raw value
+   * alongside it, so a later change to the variant's buffer never
+   * retroactively alters this row.
+   */
+  bufferMinutes?: number | null;
+}
+
+/**
+ * `docs/design/05` "Turnaround buffer" / `docs/cards/D064.md` — expands the
+ * *requested* `endsAt` by `bufferMinutes` before it is used for the overlap
+ * check or persisted, and normalizes `bufferMinutes` itself to a concrete
+ * `null` (rather than `undefined`) so it is always written to the row. Both
+ * `create` and `createGuarded` route through this so the expanded interval
+ * is what every blocking check and every stored row ever sees — there is no
+ * code path that stores the unbuffered `endsAt`.
+ */
+function applyBufferExpansion(input: CreateReservationInput): CreateReservationInput {
+  const { startsAt, endsAt } = expandIntervalForBuffer(input.startsAt, input.endsAt, input.bufferMinutes);
+  return { ...input, startsAt, endsAt, bufferMinutes: input.bufferMinutes ?? null };
 }
 
 /** Thrown by `createGuarded` when the requested interval overlaps an existing blocking reservation. */
@@ -93,7 +122,7 @@ export class ReservationRepository extends TenantScopedRepository<typeof reserva
   }
 
   create: RepositoryMethod<[input: CreateReservationInput], string> = (ctx, input) => {
-    const id = this.insertRow(ctx, input);
+    const id = this.insertRow(ctx, applyBufferExpansion(input));
     this.cache?.invalidateSubject(ctx.merchantId, input.subjectId);
     return id;
   };
@@ -137,9 +166,10 @@ export class ReservationRepository extends TenantScopedRepository<typeof reserva
    */
   createGuarded: RepositoryMethod<[input: CreateReservationInput, capacity?: number], string> = (
     ctx,
-    input,
+    rawInput,
     capacity = 1,
   ) => {
+    const input = applyBufferExpansion(rawInput);
     const attempt = this.conn.sqlite.transaction((): string => {
       if (input.idempotencyKey) {
         const existing = this.findByIdempotencyKey(ctx, input.idempotencyKey);

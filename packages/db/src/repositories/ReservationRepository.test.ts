@@ -721,4 +721,123 @@ describe("ReservationRepository", () => {
       expect(repo.countActiveHoldsByIp(ctxB, ip, "2026-10-01T09:00:00.000Z")).toBe(1);
     });
   });
+
+  /**
+   * `docs/design/05` "Turnaround buffer" / `docs/cards/D064.md` — the
+   * rental-variant buffer is applied by expanding the interval at write
+   * time and storing both the expanded `endsAt` and the raw `bufferMinutes`
+   * on the reservation row, so a later change to the variant's buffer can
+   * never retroactively alter an already-written booking.
+   */
+  describe("buffer expansion (D064)", () => {
+    it("createGuarded() expands the stored endsAt by bufferMinutes and records bufferMinutes on the row", () => {
+      const ctx = createTenantContext(merchantA);
+
+      const id = repo.createGuarded(ctx, {
+        subjectType: "INVENTORY_UNIT",
+        subjectId: generateUuidV7(),
+        startsAt: "2026-10-01T09:00:00.000Z",
+        endsAt: "2026-10-01T10:00:00.000Z",
+        quantity: 1,
+        state: "CONFIRMED",
+        createdAt: "2026-10-01T08:45:00.000Z",
+        bufferMinutes: 30,
+      });
+
+      const row = repo.findById(ctx, id);
+      expect(row?.startsAt).toBe("2026-10-01T09:00:00.000Z");
+      expect(row?.endsAt).toBe("2026-10-01T10:30:00.000Z");
+      expect(row?.bufferMinutes).toBe(30);
+    });
+
+    it("createGuarded() with no bufferMinutes stores endsAt unchanged and bufferMinutes null", () => {
+      const ctx = createTenantContext(merchantA);
+
+      const id = repo.createGuarded(ctx, {
+        subjectType: "INVENTORY_UNIT",
+        subjectId: generateUuidV7(),
+        startsAt: "2026-10-01T09:00:00.000Z",
+        endsAt: "2026-10-01T10:00:00.000Z",
+        quantity: 1,
+        state: "CONFIRMED",
+        createdAt: "2026-10-01T08:45:00.000Z",
+      });
+
+      const row = repo.findById(ctx, id);
+      expect(row?.endsAt).toBe("2026-10-01T10:00:00.000Z");
+      expect(row?.bufferMinutes).toBeNull();
+    });
+
+    it("buffer expansion creates a conflict: a second booking starting at the unbuffered end is rejected (G4)", () => {
+      const ctx = createTenantContext(merchantA);
+      const subjectId = generateUuidV7();
+
+      repo.createGuarded(ctx, {
+        subjectType: "INVENTORY_UNIT",
+        subjectId,
+        startsAt: "2026-10-01T09:00:00.000Z",
+        endsAt: "2026-10-01T10:00:00.000Z",
+        quantity: 1,
+        state: "CONFIRMED",
+        createdAt: "2026-10-01T08:45:00.000Z",
+        bufferMinutes: 30,
+      });
+
+      // Without the buffer, 10:00-11:00 would not overlap 09:00-10:00 at all
+      // (half-open interval). With the buffer expanding the first booking's
+      // effective end to 10:30, this second request now conflicts.
+      expect(() =>
+        repo.createGuarded(ctx, {
+          subjectType: "INVENTORY_UNIT",
+          subjectId,
+          startsAt: "2026-10-01T10:00:00.000Z",
+          endsAt: "2026-10-01T11:00:00.000Z",
+          quantity: 1,
+          state: "CONFIRMED",
+          createdAt: "2026-10-01T08:46:00.000Z",
+        }),
+      ).toThrow(ReservationConflictError);
+    });
+
+    it("acceptance: a later variant buffer change does not alter an existing booking's stored interval", () => {
+      const ctx = createTenantContext(merchantA);
+
+      const firstId = repo.createGuarded(ctx, {
+        subjectType: "INVENTORY_UNIT",
+        subjectId: generateUuidV7(),
+        startsAt: "2026-10-01T09:00:00.000Z",
+        endsAt: "2026-10-01T10:00:00.000Z",
+        quantity: 1,
+        state: "CONFIRMED",
+        createdAt: "2026-10-01T08:45:00.000Z",
+        bufferMinutes: 15,
+      });
+      const firstRow = repo.findById(ctx, firstId);
+
+      // The variant's buffer subsequently changes to 60 minutes; a brand new
+      // booking picks that up, but the earlier reservation is untouched
+      // because its own buffer was snapshotted onto the row at write time,
+      // never re-derived from the variant.
+      const secondId = repo.createGuarded(ctx, {
+        subjectType: "INVENTORY_UNIT",
+        subjectId: generateUuidV7(),
+        startsAt: "2026-10-01T09:00:00.000Z",
+        endsAt: "2026-10-01T10:00:00.000Z",
+        quantity: 1,
+        state: "CONFIRMED",
+        createdAt: "2026-10-01T08:45:00.000Z",
+        bufferMinutes: 60,
+      });
+      const secondRow = repo.findById(ctx, secondId);
+
+      expect(firstRow?.endsAt).toBe("2026-10-01T10:15:00.000Z");
+      expect(firstRow?.bufferMinutes).toBe(15);
+      expect(secondRow?.endsAt).toBe("2026-10-01T11:00:00.000Z");
+      expect(secondRow?.bufferMinutes).toBe(60);
+
+      // Re-reading the first reservation again confirms it never changed.
+      expect(repo.findById(ctx, firstId)?.endsAt).toBe("2026-10-01T10:15:00.000Z");
+      expect(repo.findById(ctx, firstId)?.bufferMinutes).toBe(15);
+    });
+  });
 });
