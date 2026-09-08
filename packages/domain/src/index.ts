@@ -13,6 +13,7 @@ export * from "./utils/freeIntervals.js";
 export * from "./reservations/reservationStateMachine.js";
 export * from "./reservations/bufferExpansion.js";
 export * from "./reservations/unitAllocator.js";
+export * from "./rentals/conditionGrade.js";
 
 export function workspaceGraphMarker(): string {
   return "@smb-os/domain";

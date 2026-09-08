@@ -212,3 +212,9 @@ export {
   ConditionMediaStorageKeyReusedError,
   type ConfirmConditionMediaUploadInput,
 } from "./services/ConditionMediaConfirmService.js";
+export {
+  ConditionReportService,
+  MissingCheckoutBaselineError,
+  type RecordCheckinInput,
+  type RecordCheckinResult,
+} from "./services/ConditionReportService.js";
