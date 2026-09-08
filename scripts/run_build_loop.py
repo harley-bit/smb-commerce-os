@@ -130,28 +130,27 @@ def build_prompt(day_id: str) -> str:
 
 
 def run_claude(prompt: str, transcript_path: Path) -> tuple[int, str]:
-    cmd = ["claude", "-p", prompt]
-    log(f"Running: claude -p <{len(prompt)} char prompt> (cwd={REPO})")
-    chunks = []
-    with transcript_path.open("w") as tf:
-        try:
-            proc = subprocess.Popen(
-                cmd,
-                cwd=REPO,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1,
-            )
-        except FileNotFoundError:
-            log("ERROR: `claude` CLI not found on PATH.")
-            return EXIT_ERROR, ""
-        for line in proc.stdout:
-            sys.stdout.write(line)
-            tf.write(line)
-            chunks.append(line)
-        proc.wait()
-    return proc.returncode, "".join(chunks)
+    # `claude -p` fully buffers its stdout when it isn't attached to a real
+    # terminal, so a plain subprocess.PIPE shows nothing until the whole run
+    # finishes. Route it through `script` to allocate a pseudo-tty: output
+    # streams live to whatever terminal this process itself is running in,
+    # while `script` also duplicates it into transcript_path for the record.
+    cmd = [
+        "script", "-q", str(transcript_path),
+        "claude", "-p", prompt,
+        "--permission-mode", "auto",
+    ]
+    log(f"Running: claude -p <{len(prompt)} char prompt> (cwd={REPO}, live via script -> {transcript_path.name})")
+    try:
+        proc = subprocess.run(cmd, cwd=REPO)
+    except FileNotFoundError:
+        log("ERROR: `script` or `claude` not found on PATH.")
+        return EXIT_ERROR, ""
+    try:
+        output = transcript_path.read_text(errors="replace")
+    except OSError:
+        output = ""
+    return proc.returncode, output
 
 
 def looks_like_usage_limit(output: str) -> bool:

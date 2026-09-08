@@ -76,8 +76,7 @@
       "Bash(rm -rf */coverage)",
 
       "Read(/Users/harleybarrales/Documents/Git Code Base/smb-commerce-os/**)",
-      "Edit(/Users/harleybarrales/Documents/Git Code Base/smb-commerce-os/**)",
-      "Write(/Users/harleybarrales/Documents/Git Code Base/smb-commerce-os/**)"
+      "Edit(/Users/harleybarrales/Documents/Git Code Base/smb-commerce-os/**)"
     ],
     "deny": [
       "Bash(git push*)",
@@ -103,8 +102,7 @@
       "Bash(rm -rf ..)",
       "Bash(rm -rf ../*)",
       "Bash(chmod -R 777*)",
-      "Edit(/Users/harleybarrales/Documents/Git Code Base/smb-commerce-os/.git/**)",
-      "Write(/Users/harleybarrales/Documents/Git Code Base/smb-commerce-os/.git/**)"
+      "Edit(/Users/harleybarrales/Documents/Git Code Base/smb-commerce-os/.git/**)"
     ]
   }
 }
