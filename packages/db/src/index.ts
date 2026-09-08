@@ -128,3 +128,24 @@ export {
   sweepExpiredHoldsPg,
   type SweepResult,
 } from "./jobs/HoldExpirySweeper.js";
+export {
+  ResourceRepository,
+  type Resource,
+  type ResourceKind,
+  type CreateResourceInput,
+  type UpdateResourceInput,
+} from "./repositories/ResourceRepository.js";
+export {
+  AvailabilityRuleRepository,
+  type AvailabilityRule,
+  type CreateAvailabilityRuleInput,
+  type UpdateAvailabilityRuleInput,
+} from "./repositories/AvailabilityRuleRepository.js";
+export {
+  AvailabilityExceptionRepository,
+  type AvailabilityException,
+  type AvailabilityExceptionKind,
+  type CreateAvailabilityExceptionInput,
+  type UpdateAvailabilityExceptionInput,
+} from "./repositories/AvailabilityExceptionRepository.js";
+export { ResourceService } from "./services/ResourceService.js";
