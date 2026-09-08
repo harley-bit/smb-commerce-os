@@ -1,0 +1,17 @@
+#!/usr/bin/env sh
+# Enforces Conventional Commits (https://www.conventionalcommits.org/) on the
+# commit message subject line. Installed automatically via the root
+# package.json "prepare" script (git config core.hooksPath .githooks).
+set -e
+
+message_file="$1"
+subject_line=$(head -n 1 "$message_file")
+
+pattern='^(feat|fix|docs|style|refactor|perf|test|chore|ci|build|revert)(\([a-z0-9./_-]+\))?: .+'
+
+if ! printf '%s' "$subject_line" | grep -qE "$pattern"; then
+  echo "commit-msg: '$subject_line' is not a conventional commit." >&2
+  echo "commit-msg: expected 'type(scope): description', e.g. 'feat(security): add X [D009]'." >&2
+  echo "commit-msg: allowed types: feat fix docs style refactor perf test chore ci build revert" >&2
+  exit 1
+fi
