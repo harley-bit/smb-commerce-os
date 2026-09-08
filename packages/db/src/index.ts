@@ -146,6 +146,14 @@ export {
   type LateReturnNotifiers,
 } from "./jobs/LateReturnDetector.js";
 export {
+  detectDownstreamConflictsSqlite,
+  detectDownstreamConflictsPg,
+  type DownstreamConflictAlert,
+  type DownstreamConflictDetectionResult,
+  type DownstreamConflictAlertHandler,
+  type DownstreamConflictNotifiers,
+} from "./jobs/DownstreamConflictAlerts.js";
+export {
   ResourceRepository,
   type Resource,
   type ResourceKind,
