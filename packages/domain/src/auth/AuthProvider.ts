@@ -19,10 +19,14 @@ export interface Session {
 }
 
 /**
- * The identity a verified session resolves to, for use by
- * authenticated routes and (once tenants exist) row-level scoping.
+ * The identity a verified session resolves to, for use by authenticated
+ * routes. Distinct from `TenantContext` (`packages/domain/src/tenancy`,
+ * D017): this is *who* is calling (global user identity, no merchant
+ * scope — a user can belong to several merchants via `merchant_users`),
+ * while `TenantContext` is *which merchant's data* a repository call may
+ * touch.
  */
-export interface TenantContext {
+export interface AuthIdentity {
   userId: string;
   email: string;
   roles: string[];
@@ -109,7 +113,7 @@ export interface AuthProvider {
    */
   authenticate(email: string, password: string, mfaCode?: string): Promise<AuthResult>;
   createSession(userId: string, ip: string, userAgent: string): Promise<Session>;
-  verifySession(token: string): Promise<TenantContext | null>;
+  verifySession(token: string): Promise<AuthIdentity | null>;
   revokeSession(token: string): Promise<void>;
   initiatePasswordReset(email: string): Promise<void>;
   completePasswordReset(token: string, newPassword: string): Promise<void>;

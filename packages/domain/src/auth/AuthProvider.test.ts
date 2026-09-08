@@ -7,11 +7,11 @@ import {
   InvalidResetTokenError,
   MfaCodeRequiredError,
   MfaEnrollmentRequiredError,
+  type AuthIdentity,
   type AuthProvider,
   type AuthResult,
   type MfaEnrollment,
   type Session,
-  type TenantContext,
 } from "./AuthProvider.js";
 
 describe("AuthProvider domain contract", () => {
@@ -25,7 +25,7 @@ describe("AuthProvider domain contract", () => {
         createdAt: new Date(0).toISOString(),
         expiresAt: new Date(1).toISOString(),
       }),
-      verifySession: async (): Promise<TenantContext | null> => null,
+      verifySession: async (): Promise<AuthIdentity | null> => null,
       revokeSession: async (): Promise<void> => undefined,
       initiatePasswordReset: async (): Promise<void> => undefined,
       completePasswordReset: async (): Promise<void> => undefined,

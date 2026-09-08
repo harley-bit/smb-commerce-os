@@ -7,3 +7,4 @@ export function dbPackageMarker(): string {
 export { createConnection } from "./connection.js";
 export { createPgConnection } from "./pg-connection.js";
 export { runSqliteMigrations, runPgMigrations } from "./migrate.js";
+export { TenantScopedRepository, type RepositoryMethod } from "./tenancy/TenantScopedRepository.js";

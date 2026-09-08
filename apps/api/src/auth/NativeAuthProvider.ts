@@ -9,11 +9,11 @@ import {
   InvalidResetTokenError,
   MfaCodeRequiredError,
   MfaEnrollmentRequiredError,
+  type AuthIdentity,
   type AuthProvider,
   type AuthResult,
   type MfaEnrollment,
   type Session,
-  type TenantContext,
 } from "@smb-os/domain";
 import { AccountBackoff } from "./rateLimiter.js";
 import type { ResetTokenRepository, SessionRepository, UserRepository } from "./repositories.js";
@@ -170,7 +170,7 @@ export class NativeAuthProvider implements AuthProvider {
     };
   }
 
-  async verifySession(token: string): Promise<TenantContext | null> {
+  async verifySession(token: string): Promise<AuthIdentity | null> {
     const record = await this.sessions.findByToken(token);
     if (!record || record.revokedAt !== null) {
       return null;
