@@ -246,3 +246,67 @@ export const inventoryMovements = sqliteTable("inventory_movements", {
     .references(() => users.id),
   note: text("note").notNull(),
 });
+
+/**
+ * `docs/design/03` "Service capacity". A bookable subject for `SERVICE`
+ * listings — a staff member, a room, or a piece of equipment. `capacity` is
+ * usually 1 (one instructor, one room) but can exceed 1 for a class or a
+ * room with seats; it is the bound a future reservation service must check
+ * concurrent `HELD`/`CONFIRMED`/`IN_USE` reservations against (`D026`+ —
+ * this card is schema only, no capacity-checking logic yet).
+ */
+export const resources = sqliteTable("resources", {
+  id: text("id").primaryKey(),
+  merchantId: text("merchant_id")
+    .notNull()
+    .references(() => merchants.id),
+  locationId: text("location_id")
+    .notNull()
+    .references(() => locations.id),
+  kind: text("kind", { enum: ["STAFF", "ROOM", "EQUIPMENT"] }).notNull(),
+  name: text("name").notNull(),
+  capacity: integer("capacity").notNull(),
+  archivedAt: text("archived_at"),
+});
+
+/**
+ * `docs/design/03` "Service capacity". Recurring weekly availability for a
+ * resource — deliberately weekday + time window, not a full RRULE.
+ * `weekday` is 0 (Sunday) through 6 (Saturday). `validFrom`/`validTo` bound
+ * the date range the rule applies over; `validTo` is nullable for a rule
+ * with no planned end.
+ */
+export const availabilityRules = sqliteTable("availability_rules", {
+  id: text("id").primaryKey(),
+  merchantId: text("merchant_id")
+    .notNull()
+    .references(() => merchants.id),
+  resourceId: text("resource_id")
+    .notNull()
+    .references(() => resources.id),
+  weekday: integer("weekday").notNull(),
+  startTime: text("start_time").notNull(),
+  endTime: text("end_time").notNull(),
+  validFrom: text("valid_from"),
+  validTo: text("valid_to"),
+});
+
+/**
+ * `docs/design/03` "Service capacity". One-off deviations from the
+ * recurring `availability_rules` — a holiday closure (`BLACKOUT`) or an
+ * extra opening (`EXTRA`), each bounded by a real half-open UTC interval
+ * rather than a weekday/time-of-day pair.
+ */
+export const availabilityExceptions = sqliteTable("availability_exceptions", {
+  id: text("id").primaryKey(),
+  merchantId: text("merchant_id")
+    .notNull()
+    .references(() => merchants.id),
+  resourceId: text("resource_id")
+    .notNull()
+    .references(() => resources.id),
+  startsAt: text("starts_at").notNull(),
+  endsAt: text("ends_at").notNull(),
+  kind: text("kind", { enum: ["BLACKOUT", "EXTRA"] }).notNull(),
+  note: text("note"),
+});

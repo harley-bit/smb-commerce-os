@@ -1,10 +1,12 @@
 import { sql } from "drizzle-orm";
 import {
   check,
+  date,
   integer,
   pgTable,
   primaryKey,
   text,
+  time,
   timestamp,
   uniqueIndex,
   uuid,
@@ -247,4 +249,68 @@ export const inventoryMovements = pgTable("inventory_movements", {
     .notNull()
     .references(() => users.id),
   note: text("note").notNull(),
+});
+
+/**
+ * `docs/design/03` "Service capacity". A bookable subject for `SERVICE`
+ * listings — a staff member, a room, or a piece of equipment. `capacity` is
+ * usually 1 (one instructor, one room) but can exceed 1 for a class or a
+ * room with seats; it is the bound a future reservation service must check
+ * concurrent `HELD`/`CONFIRMED`/`IN_USE` reservations against (`D026`+ —
+ * this card is schema only, no capacity-checking logic yet).
+ */
+export const resources = pgTable("resources", {
+  id: uuid("id").primaryKey(),
+  merchantId: uuid("merchant_id")
+    .notNull()
+    .references(() => merchants.id),
+  locationId: uuid("location_id")
+    .notNull()
+    .references(() => locations.id),
+  kind: text("kind", { enum: ["STAFF", "ROOM", "EQUIPMENT"] }).notNull(),
+  name: text("name").notNull(),
+  capacity: integer("capacity").notNull(),
+  archivedAt: timestamp("archived_at", { withTimezone: true }),
+});
+
+/**
+ * `docs/design/03` "Service capacity". Recurring weekly availability for a
+ * resource — deliberately weekday + time window, not a full RRULE.
+ * `weekday` is 0 (Sunday) through 6 (Saturday). `validFrom`/`validTo` bound
+ * the date range the rule applies over; `validTo` is nullable for a rule
+ * with no planned end.
+ */
+export const availabilityRules = pgTable("availability_rules", {
+  id: uuid("id").primaryKey(),
+  merchantId: uuid("merchant_id")
+    .notNull()
+    .references(() => merchants.id),
+  resourceId: uuid("resource_id")
+    .notNull()
+    .references(() => resources.id),
+  weekday: integer("weekday").notNull(),
+  startTime: time("start_time").notNull(),
+  endTime: time("end_time").notNull(),
+  validFrom: date("valid_from"),
+  validTo: date("valid_to"),
+});
+
+/**
+ * `docs/design/03` "Service capacity". One-off deviations from the
+ * recurring `availability_rules` — a holiday closure (`BLACKOUT`) or an
+ * extra opening (`EXTRA`), each bounded by a real half-open UTC interval
+ * rather than a weekday/time-of-day pair.
+ */
+export const availabilityExceptions = pgTable("availability_exceptions", {
+  id: uuid("id").primaryKey(),
+  merchantId: uuid("merchant_id")
+    .notNull()
+    .references(() => merchants.id),
+  resourceId: uuid("resource_id")
+    .notNull()
+    .references(() => resources.id),
+  startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
+  endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
+  kind: text("kind", { enum: ["BLACKOUT", "EXTRA"] }).notNull(),
+  note: text("note"),
 });
