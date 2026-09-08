@@ -2,7 +2,7 @@ import { assertCan, type TenantContext } from "@smb-os/domain";
 import type { MerchantUserRole } from "../repositories/MerchantUserRepository.js";
 import type { AuditLogRepository } from "../repositories/AuditLogRepository.js";
 import type { InventoryMovementRepository } from "../repositories/InventoryMovementRepository.js";
-import type { ReservationRepository } from "../repositories/ReservationRepository.js";
+import type { Reservation, ReservationRepository } from "../repositories/ReservationRepository.js";
 import type { VariantRepository } from "../repositories/VariantRepository.js";
 import type { InventoryUnitService } from "./InventoryUnitService.js";
 
@@ -18,6 +18,44 @@ export class UnitCurrentlyRentedError extends Error {
   }
 }
 
+/**
+ * `docs/cards/D069.md` — thrown when a unit has one or more still-blocking
+ * reservations that start *after* the sale's `occurredAt` (future bookings,
+ * distinct from I3's "rented right now" check) and the caller did not pass
+ * `overrideFutureReservations`. This is the "warn" half of the card's "warn,
+ * require explicit override" deliverable — the sale makes no writes.
+ */
+export class FutureReservationsExistError extends Error {
+  constructor(
+    public readonly unitId: string,
+    public readonly reservationIds: string[],
+  ) {
+    super(
+      `Cannot sell unit ${unitId}: it has ${reservationIds.length} future reservation(s); ` +
+        "pass overrideFutureReservations to cancel them and proceed",
+    );
+    this.name = "FutureReservationsExistError";
+  }
+}
+
+/** `docs/cards/D069.md` security check — override must carry a reason to be audit-logged. */
+export class MissingOverrideReasonError extends Error {
+  constructor() {
+    super("overrideReason is required when overrideFutureReservations is true");
+    this.name = "MissingOverrideReasonError";
+  }
+}
+
+/**
+ * `docs/cards/D069.md` deliverable — "notify customers". Same optional,
+ * default-no-op injected-callback shape as the native auth provider's
+ * password-reset notifier (`ResetTokenNotifier`, `apps/api/src/auth`): this
+ * service has no opinion on the actual delivery channel (email/SMS/etc.),
+ * it just guarantees the callback fires once per cancelled reservation with
+ * the override reason.
+ */
+export type FutureReservationCancelledNotifier = (reservation: Reservation, reason: string) => void;
+
 export interface SellProductInput {
   variantId: string;
   unitId?: string;
@@ -26,6 +64,10 @@ export interface SellProductInput {
   note: string;
   actorUserId: string;
   occurredAt: string;
+  /** `docs/cards/D069.md` — required explicit acknowledgement to sell a unit with future reservations. */
+  overrideFutureReservations?: boolean;
+  /** `docs/cards/D069.md` security check — required whenever `overrideFutureReservations` is true. */
+  overrideReason?: string;
 }
 
 export interface SellProductResult {
@@ -53,6 +95,7 @@ export class ProductSaleService {
     private readonly unitService: InventoryUnitService,
     private readonly auditLogRepo: AuditLogRepository,
     private readonly reservationRepo: ReservationRepository,
+    private readonly notifyFutureReservationCancelled: FutureReservationCancelledNotifier = () => undefined,
   ) {}
 
   sellProduct(ctx: TenantContext, actingRole: MerchantUserRole, input: SellProductInput): SellProductResult {
@@ -70,11 +113,29 @@ export class ProductSaleService {
       throw new Error(`Cannot sell variant ${input.variantId}: mode is ${variant.mode}, not PRODUCT`);
     }
 
-    if (
-      input.unitId &&
-      this.reservationRepo.isSubjectCurrentlyBlocked(ctx, "INVENTORY_UNIT", input.unitId, input.occurredAt)
-    ) {
-      throw new UnitCurrentlyRentedError(input.unitId);
+    let futureReservations: Reservation[] = [];
+    if (input.unitId) {
+      if (this.reservationRepo.isSubjectCurrentlyBlocked(ctx, "INVENTORY_UNIT", input.unitId, input.occurredAt)) {
+        throw new UnitCurrentlyRentedError(input.unitId);
+      }
+
+      futureReservations = this.reservationRepo.findFutureBlocking(
+        ctx,
+        "INVENTORY_UNIT",
+        input.unitId,
+        input.occurredAt,
+      );
+      if (futureReservations.length > 0) {
+        if (!input.overrideFutureReservations) {
+          throw new FutureReservationsExistError(
+            input.unitId,
+            futureReservations.map((r) => r.id),
+          );
+        }
+        if (!input.overrideReason || input.overrideReason.trim().length === 0) {
+          throw new MissingOverrideReasonError();
+        }
+      }
     }
 
     const unitPriceMinor = variant.priceMinor;
@@ -119,6 +180,30 @@ export class ProductSaleService {
       }),
       occurredAt: input.occurredAt,
     });
+
+    if (futureReservations.length > 0 && input.unitId) {
+      for (const reservation of futureReservations) {
+        this.reservationRepo.cancel(ctx, reservation.id, input.occurredAt);
+        this.notifyFutureReservationCancelled(reservation, input.overrideReason as string);
+      }
+
+      // `docs/cards/D069.md` security check — the override itself is
+      // audit-logged with actor and reason, distinct from the `inventory.sale`
+      // entry above so "why were these bookings cancelled" is never buried
+      // inside a plain sale record.
+      this.auditLogRepo.append(ctx, {
+        actorType: "USER",
+        actorId: input.actorUserId,
+        action: "inventory.sale.override_future_reservations",
+        entityType: "inventory_units",
+        entityId: input.unitId,
+        afterJson: JSON.stringify({
+          reason: input.overrideReason,
+          cancelledReservationIds: futureReservations.map((r) => r.id),
+        }),
+        occurredAt: input.occurredAt,
+      });
+    }
 
     return { movementId, unitPriceMinor, lineTotalMinor, currency };
   }

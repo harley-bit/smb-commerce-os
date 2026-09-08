@@ -970,4 +970,131 @@ describe("ReservationRepository", () => {
       expect(repo.isSubjectCurrentlyBlocked(ctxB, "INVENTORY_UNIT", unitId, "2026-10-02T00:00:00.000Z")).toBe(true);
     });
   });
+
+  describe("findFutureBlocking() — docs/cards/D069.md", () => {
+    it("returns a blocking reservation that starts after asOf", () => {
+      const ctx = createTenantContext(merchantA);
+      const unitId = generateUuidV7();
+
+      const id = repo.create(ctx, {
+        subjectType: "INVENTORY_UNIT",
+        subjectId: unitId,
+        startsAt: "2026-10-10T09:00:00.000Z",
+        endsAt: "2026-10-12T10:00:00.000Z",
+        quantity: 1,
+        state: "CONFIRMED",
+        createdAt: "2026-10-01T08:45:00.000Z",
+      });
+
+      const result = repo.findFutureBlocking(ctx, "INVENTORY_UNIT", unitId, "2026-10-01T00:00:00.000Z");
+      expect(result.map((r) => r.id)).toEqual([id]);
+    });
+
+    it("excludes a reservation that starts at or before asOf", () => {
+      const ctx = createTenantContext(merchantA);
+      const unitId = generateUuidV7();
+
+      repo.create(ctx, {
+        subjectType: "INVENTORY_UNIT",
+        subjectId: unitId,
+        startsAt: "2026-10-01T00:00:00.000Z",
+        endsAt: "2026-10-05T10:00:00.000Z",
+        quantity: 1,
+        state: "CONFIRMED",
+        createdAt: "2026-09-25T08:45:00.000Z",
+      });
+
+      expect(repo.findFutureBlocking(ctx, "INVENTORY_UNIT", unitId, "2026-10-01T00:00:00.000Z")).toEqual([]);
+    });
+
+    it("excludes CANCELLED, COMPLETED, and EXPIRED reservations even though they start in the future", () => {
+      const ctx = createTenantContext(merchantA);
+      const unitId = generateUuidV7();
+
+      for (const state of ["CANCELLED", "COMPLETED", "EXPIRED"] as const) {
+        repo.create(ctx, {
+          subjectType: "INVENTORY_UNIT",
+          subjectId: unitId,
+          startsAt: "2026-10-10T09:00:00.000Z",
+          endsAt: "2026-10-12T10:00:00.000Z",
+          quantity: 1,
+          state,
+          createdAt: "2026-10-01T08:45:00.000Z",
+        });
+      }
+
+      expect(repo.findFutureBlocking(ctx, "INVENTORY_UNIT", unitId, "2026-10-01T00:00:00.000Z")).toEqual([]);
+    });
+
+    it("is tenant-scoped — merchant B's identical unit id is not returned for merchant A's future-blocking check", () => {
+      const ctxA = createTenantContext(merchantA);
+      const ctxB = createTenantContext(merchantB);
+      const unitId = generateUuidV7();
+
+      repo.create(ctxB, {
+        subjectType: "INVENTORY_UNIT",
+        subjectId: unitId,
+        startsAt: "2026-10-10T09:00:00.000Z",
+        endsAt: "2026-10-12T10:00:00.000Z",
+        quantity: 1,
+        state: "CONFIRMED",
+        createdAt: "2026-10-01T08:45:00.000Z",
+      });
+
+      expect(repo.findFutureBlocking(ctxA, "INVENTORY_UNIT", unitId, "2026-10-01T00:00:00.000Z")).toEqual([]);
+      expect(repo.findFutureBlocking(ctxB, "INVENTORY_UNIT", unitId, "2026-10-01T00:00:00.000Z")).toHaveLength(1);
+    });
+  });
+
+  describe("cancel() — docs/cards/D069.md", () => {
+    it("transitions a CONFIRMED reservation to CANCELLED and stamps releasedAt", () => {
+      const ctx = createTenantContext(merchantA);
+      const id = repo.createGuarded(ctx, {
+        subjectType: "RESOURCE",
+        subjectId: resourceA,
+        startsAt: "2026-10-01T09:00:00.000Z",
+        endsAt: "2026-10-01T10:00:00.000Z",
+        quantity: 1,
+        state: "CONFIRMED",
+        createdAt: "2026-10-01T08:45:00.000Z",
+      });
+
+      repo.cancel(ctx, id, "2026-09-30T00:00:00.000Z");
+
+      expect(repo.findById(ctx, id)).toMatchObject({ state: "CANCELLED", releasedAt: "2026-09-30T00:00:00.000Z" });
+    });
+
+    it("throws IllegalReservationTransitionError when the reservation is already terminal", () => {
+      const ctx = createTenantContext(merchantA);
+      const id = repo.createGuarded(ctx, {
+        subjectType: "RESOURCE",
+        subjectId: resourceA,
+        startsAt: "2026-10-01T09:00:00.000Z",
+        endsAt: "2026-10-01T10:00:00.000Z",
+        quantity: 1,
+        state: "COMPLETED",
+        createdAt: "2026-10-01T08:45:00.000Z",
+      });
+
+      expect(() => repo.cancel(ctx, id, "2026-09-30T00:00:00.000Z")).toThrow(IllegalReservationTransitionError);
+    });
+
+    it("is tenant-scoped — merchant B cannot cancel merchant A's reservation", () => {
+      const ctxA = createTenantContext(merchantA);
+      const ctxB = createTenantContext(merchantB);
+
+      const id = repo.createGuarded(ctxA, {
+        subjectType: "RESOURCE",
+        subjectId: resourceA,
+        startsAt: "2026-10-01T09:00:00.000Z",
+        endsAt: "2026-10-01T10:00:00.000Z",
+        quantity: 1,
+        state: "CONFIRMED",
+        createdAt: "2026-10-01T08:45:00.000Z",
+      });
+
+      expect(() => repo.cancel(ctxB, id, "2026-09-30T00:00:00.000Z")).toThrow(`Reservation not found: ${id}`);
+      expect(repo.findById(ctxA, id)?.state).toEqual("CONFIRMED");
+    });
+  });
 });

@@ -12,7 +12,12 @@ import { InventoryMovementRepository, InsufficientStockError } from "../reposito
 import { AuditLogRepository } from "../repositories/AuditLogRepository.js";
 import { ReservationRepository } from "../repositories/ReservationRepository.js";
 import { InventoryUnitService } from "./InventoryUnitService.js";
-import { ProductSaleService, UnitCurrentlyRentedError } from "./ProductSaleService.js";
+import {
+  FutureReservationsExistError,
+  MissingOverrideReasonError,
+  ProductSaleService,
+  UnitCurrentlyRentedError,
+} from "./ProductSaleService.js";
 
 describe("ProductSaleService", () => {
   let connection: Connection;
@@ -27,6 +32,7 @@ describe("ProductSaleService", () => {
   let serviceVariantA: string;
   let locationA: string;
   let userId: string;
+  let notifiedReservations: { reservationId: string; reason: string }[];
 
   beforeEach(async () => {
     connection = createConnection(":memory:");
@@ -40,7 +46,15 @@ describe("ProductSaleService", () => {
     auditLogRepo = new AuditLogRepository(connection);
     reservationRepo = new ReservationRepository(connection);
     const unitService = new InventoryUnitService(unitRepo, auditLogRepo);
-    service = new ProductSaleService(variantRepo, movementRepo, unitService, auditLogRepo, reservationRepo);
+    notifiedReservations = [];
+    service = new ProductSaleService(
+      variantRepo,
+      movementRepo,
+      unitService,
+      auditLogRepo,
+      reservationRepo,
+      (reservation, reason) => notifiedReservations.push({ reservationId: reservation.id, reason }),
+    );
 
     merchantA = generateUuidV7();
     userId = generateUuidV7();
@@ -221,6 +235,128 @@ describe("ProductSaleService", () => {
 
     expect(movementRepo.sumStock(ctx, variantA, locationA)).toBe(1);
     expect(unitRepo.findById(ctx, unitId)).toMatchObject({ status: "AVAILABLE" });
+  });
+
+  it("rejects selling a unit with a future reservation unless overridden (D069)", () => {
+    const ctx = createTenantContext(merchantA);
+    receiveStock(ctx, 1);
+    const unitId = unitRepo.create(ctx, {
+      variantId: variantA,
+      locationId: locationA,
+      unitCode: "SN-003",
+      trackingMode: "SERIALIZED",
+    });
+    const reservationId = reservationRepo.create(ctx, {
+      subjectType: "INVENTORY_UNIT",
+      subjectId: unitId,
+      startsAt: "2026-09-20T00:00:00.000Z",
+      endsAt: "2026-09-25T00:00:00.000Z",
+      quantity: 1,
+      state: "CONFIRMED",
+      createdAt: "2026-09-08T00:00:00.000Z",
+    });
+
+    expect(() =>
+      service.sellProduct(ctx, "ADMIN", {
+        variantId: variantA,
+        unitId,
+        locationId: locationA,
+        quantity: 1,
+        actorUserId: userId,
+        occurredAt: "2026-09-08T01:00:00.000Z",
+        note: "Sold at register",
+      }),
+    ).toThrow(FutureReservationsExistError);
+
+    expect(movementRepo.sumStock(ctx, variantA, locationA)).toBe(1);
+    expect(unitRepo.findById(ctx, unitId)).toMatchObject({ status: "AVAILABLE" });
+    expect(reservationRepo.findById(ctx, reservationId)).toMatchObject({ state: "CONFIRMED" });
+    expect(notifiedReservations).toEqual([]);
+  });
+
+  it("requires a reason when overriding future reservations (D069 security check)", () => {
+    const ctx = createTenantContext(merchantA);
+    receiveStock(ctx, 1);
+    const unitId = unitRepo.create(ctx, {
+      variantId: variantA,
+      locationId: locationA,
+      unitCode: "SN-004",
+      trackingMode: "SERIALIZED",
+    });
+    reservationRepo.create(ctx, {
+      subjectType: "INVENTORY_UNIT",
+      subjectId: unitId,
+      startsAt: "2026-09-20T00:00:00.000Z",
+      endsAt: "2026-09-25T00:00:00.000Z",
+      quantity: 1,
+      state: "CONFIRMED",
+      createdAt: "2026-09-08T00:00:00.000Z",
+    });
+
+    expect(() =>
+      service.sellProduct(ctx, "ADMIN", {
+        variantId: variantA,
+        unitId,
+        locationId: locationA,
+        quantity: 1,
+        actorUserId: userId,
+        occurredAt: "2026-09-08T01:00:00.000Z",
+        note: "Sold at register",
+        overrideFutureReservations: true,
+      }),
+    ).toThrow(MissingOverrideReasonError);
+
+    expect(movementRepo.sumStock(ctx, variantA, locationA)).toBe(1);
+  });
+
+  it("cancels future reservations, notifies, and audit-logs actor + reason when overridden (D069)", () => {
+    const ctx = createTenantContext(merchantA);
+    receiveStock(ctx, 1);
+    const unitId = unitRepo.create(ctx, {
+      variantId: variantA,
+      locationId: locationA,
+      unitCode: "SN-005",
+      trackingMode: "SERIALIZED",
+    });
+    const reservationId = reservationRepo.create(ctx, {
+      subjectType: "INVENTORY_UNIT",
+      subjectId: unitId,
+      startsAt: "2026-09-20T00:00:00.000Z",
+      endsAt: "2026-09-25T00:00:00.000Z",
+      quantity: 1,
+      state: "CONFIRMED",
+      createdAt: "2026-09-08T00:00:00.000Z",
+    });
+
+    const result = service.sellProduct(ctx, "ADMIN", {
+      variantId: variantA,
+      unitId,
+      locationId: locationA,
+      quantity: 1,
+      actorUserId: userId,
+      occurredAt: "2026-09-08T01:00:00.000Z",
+      note: "Sold at register",
+      overrideFutureReservations: true,
+      overrideReason: "Unit sold to a customer, taken out of the rental fleet",
+    });
+
+    expect(result.unitPriceMinor).toBe(5000);
+    expect(unitRepo.findById(ctx, unitId)).toMatchObject({ status: "SOLD" });
+    expect(reservationRepo.findById(ctx, reservationId)).toMatchObject({ state: "CANCELLED" });
+    expect(notifiedReservations).toEqual([
+      { reservationId, reason: "Unit sold to a customer, taken out of the rental fleet" },
+    ]);
+
+    const entries = auditLogRepo.list(ctx);
+    const overrideEntry = entries.find((entry) => entry.action === "inventory.sale.override_future_reservations");
+    expect(overrideEntry).toBeDefined();
+    expect(overrideEntry?.actorId).toBe(userId);
+    const after = JSON.parse(overrideEntry?.afterJson ?? "{}") as {
+      reason: string;
+      cancelledReservationIds: string[];
+    };
+    expect(after.reason).toBe("Unit sold to a customer, taken out of the rental fleet");
+    expect(after.cancelledReservationIds).toEqual([reservationId]);
   });
 
   it("rejects a sale for a non-PRODUCT variant", () => {

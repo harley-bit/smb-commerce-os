@@ -246,6 +246,64 @@ export class ReservationRepository extends TenantScopedRepository<typeof reserva
     this.cache?.invalidateSubject(ctx.merchantId, subjectId);
   };
 
+  /**
+   * `docs/cards/D069.md` — the write half of the future-reservation sale
+   * override: cancels a still-blocking (HELD/CONFIRMED) reservation via
+   * `applyReservationEvent`'s `CANCELLED` transition, so an attempt against
+   * a reservation already `IN_USE` (or otherwise terminal) throws
+   * `IllegalReservationTransitionError` rather than silently no-opping —
+   * the caller (`ProductSaleService`) is only ever meant to reach this for
+   * reservations `findFutureBlocking` returned, which by construction have
+   * not started yet.
+   */
+  cancel: RepositoryMethod<[id: string, releasedAt: string], void> = (ctx, id, releasedAt) => {
+    let subjectId = "";
+    const attempt = this.conn.sqlite.transaction((): void => {
+      const row = this.findById(ctx, id);
+      if (!row) {
+        throw new Error(`Reservation not found: ${id}`);
+      }
+      subjectId = row.subjectId;
+      const nextState = applyReservationEvent(row.state, { type: "CANCELLED" });
+      this.conn.db
+        .update(reservations)
+        .set({ state: nextState, releasedAt })
+        .where(and(this.scope(ctx), eq(reservations.id, id)))
+        .run();
+    });
+
+    attempt.immediate();
+    this.cache?.invalidateSubject(ctx.merchantId, subjectId);
+  };
+
+  /**
+   * `docs/cards/D069.md` — the read half of the future-reservation sale
+   * override. Distinct from `isSubjectCurrentlyBlocked` (D067's "blocked
+   * right now" point-in-time check): this returns every still-blocking
+   * reservation that *starts after* `asOf`, i.e. bookings the sale hasn't
+   * touched yet but would orphan if the unit is sold anyway. Uses the same
+   * `blockingStatePredicate` as every other blocking query, so an unswept
+   * expired HELD row still does not count.
+   */
+  findFutureBlocking: RepositoryMethod<
+    [subjectType: ReservationSubjectType, subjectId: string, asOf: string],
+    Reservation[]
+  > = (ctx, subjectType, subjectId, asOf) => {
+    return this.conn.db
+      .select()
+      .from(reservations)
+      .where(
+        and(
+          this.scope(ctx),
+          eq(reservations.subjectType, subjectType),
+          eq(reservations.subjectId, subjectId),
+          gt(reservations.startsAt, asOf),
+          blockingStatePredicate(asOf),
+        ),
+      )
+      .all() as Reservation[];
+  };
+
   private insertRow(ctx: TenantContext, input: CreateReservationInput): string {
     const id = generateUuidV7();
     this.conn.db
