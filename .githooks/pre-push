@@ -1,0 +1,34 @@
+#!/usr/bin/env sh
+# Blocks a push that would carry a known-vulnerable dependency or a
+# SAST-flagged pattern up to the remote. Same checks CI runs (D007/D008),
+# run here too so a problem is caught before it ever leaves this machine,
+# not just after a CI run against the pushed commit. Installed automatically
+# via the root package.json "prepare" script (git config core.hooksPath
+# .githooks).
+set -e
+
+if ! command -v pnpm >/dev/null 2>&1; then
+  echo "pre-push: pnpm is not installed — cannot run the dependency audit, aborting push." >&2
+  exit 1
+fi
+
+echo "pre-push: dependency vulnerability scan (pnpm audit --audit-level=high)..."
+if ! pnpm audit --audit-level=high; then
+  echo "pre-push: pnpm audit found a high-or-above severity vulnerability — push blocked." >&2
+  echo "pre-push: fix or explicitly accept the finding, then push again." >&2
+  exit 1
+fi
+
+if ! command -v semgrep >/dev/null 2>&1; then
+  echo "pre-push: semgrep is not installed (pip install semgrep, or see docs/design/10) — cannot run SAST, aborting push." >&2
+  exit 1
+fi
+
+echo "pre-push: static analysis (semgrep --config p/security-audit)..."
+if ! semgrep scan --config p/security-audit --error --exclude node_modules --exclude coverage --exclude dist . >/dev/null; then
+  echo "pre-push: semgrep found a blocking finding — push blocked." >&2
+  echo "pre-push: run 'semgrep scan --config p/security-audit --exclude node_modules --exclude coverage --exclude dist .' to see it, fix it, then push again." >&2
+  exit 1
+fi
+
+echo "pre-push: clean."

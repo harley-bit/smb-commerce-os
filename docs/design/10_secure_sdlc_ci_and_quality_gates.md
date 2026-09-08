@@ -1,5 +1,7 @@
 # Secure SDLC, CI, and Quality Gates
 
+**Implementation status (added 2026-09-08, after D001–D009):** this doc was written as a Phase 0 plan before any of it existed. Pipeline stages 1–7 below (install, lint, typecheck, secret scan, dependency scan, SAST, unit tests) are real and running, in CI (`.github/workflows/ci.yml`) and locally. Stages 8–13 (dual-dialect migrations, integration tests, tenant isolation, concurrency, contract checks, multi-target build) don't exist yet — they arrive with Phase 1's schema and repositories. The solo-developer branch-protection approach in this doc's "Branching" section below is exactly what got built, with one refinement found in practice: see `17_change_management_policy.md` for the exact settings and why `required_approving_review_count: 0` (not the generic "self-merge permitted" framing below) is the actual mechanism — `1` combined with admin enforcement would have made a one-person repo unmergeable, since GitHub never lets an author approve their own PR.
+
 ## Principle
 
 The pipeline is built in Phase 0, **before any application code exists**. Every day thereafter inherits working gates. A pipeline added later has to be retrofitted against a codebase that already violates it, and the usual outcome is that the rules get relaxed to make the build pass.
@@ -37,9 +39,9 @@ On merge to `main`: the above, plus end-to-end tests (Playwright), a container i
 
 **Stages 10 and 11 are never waivable.** Tenant isolation and reservation correctness are the two properties whose violation cannot be fixed after the fact — one is a breach, the other is corrupted data and angry customers.
 
-## Pre-commit
+## Pre-commit and pre-push
 
-Fast checks only, so the hook is never bypassed out of frustration: format staged files, lint staged files, secret scan, and a conventional-commit message check. Type checking and tests belong in CI, not in the hook.
+Fast checks only, so the hook is never bypassed out of frustration. As built (`.githooks/`, installed via `package.json`'s `prepare` script): `pre-commit` runs `gitleaks protect --staged`; `commit-msg` enforces Conventional Commits on the subject line. **`pre-push`** (added alongside `17`) runs `pnpm audit --audit-level=high` and semgrep SAST before anything leaves the machine — CI running the same two checks is the backstop for a bypassed or missing hook, not the first line of defense. Type checking and the full test suite still belong in CI, not in a hook — too slow to run on every commit or push without inviting `--no-verify`.
 
 ## Test strategy
 
