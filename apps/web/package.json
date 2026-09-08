@@ -9,7 +9,7 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint .",
-    "test": "echo \"@smb-os/web: no tests yet\"",
+    "test": "vitest run",
     "test:isolation": "echo \"@smb-os/web: no isolation suite yet\"",
     "dev": "echo \"@smb-os/web: no dev server yet\""
   },
@@ -18,7 +18,9 @@
   },
   "devDependencies": {
     "@smb-os/eslint-config": "workspace:*",
+    "@types/node": "^26.4.1",
     "eslint": "^10.10.0",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vitest": "^3.2.7"
   }
 }
