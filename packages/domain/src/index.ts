@@ -8,6 +8,7 @@ export * from "./utils/time.js";
 export * from "./utils/interval.js";
 export * from "./utils/availabilityRule.js";
 export * from "./utils/availabilityExceptions.js";
+export * from "./utils/freeIntervals.js";
 
 export function workspaceGraphMarker(): string {
   return "@smb-os/domain";

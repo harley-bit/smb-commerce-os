@@ -33,6 +33,24 @@ function subtractOne(intervals: readonly Interval[], subtrahend: Interval): Inte
   return result;
 }
 
+/**
+ * Removes every `subtrahend` interval from `intervals` (full removal, split,
+ * or trim as needed). Order of subtrahends does not affect the result — set
+ * difference against a union of removals is order-independent. Shared by
+ * `applyAvailabilityExceptions` (BLACKOUT) and D048's `computeFreeIntervals`
+ * (blocking reservations).
+ */
+export function subtractIntervals(
+  intervals: readonly Interval[],
+  subtrahends: readonly Interval[],
+): Interval[] {
+  let remaining: Interval[] = [...intervals];
+  for (const subtrahend of subtrahends) {
+    remaining = subtractOne(remaining, subtrahend);
+  }
+  return remaining;
+}
+
 function mergeSorted(intervals: readonly Interval[]): Interval[] {
   const sorted = [...intervals].sort((a, b) => Date.parse(a.start) - Date.parse(b.start));
   const merged: Interval[] = [];
@@ -64,12 +82,8 @@ export function applyAvailabilityExceptions(
     makeInterval(exception.interval.start, exception.interval.end);
   }
 
-  let remaining: Interval[] = [...baseIntervals];
-  for (const exception of exceptions) {
-    if (exception.kind === "BLACKOUT") {
-      remaining = subtractOne(remaining, exception.interval);
-    }
-  }
+  const blackouts = exceptions.filter((e) => e.kind === "BLACKOUT").map((e) => e.interval);
+  const remaining = subtractIntervals(baseIntervals, blackouts);
   const extras = exceptions.filter((e) => e.kind === "EXTRA").map((e) => e.interval);
   return mergeSorted([...remaining, ...extras]);
 }
