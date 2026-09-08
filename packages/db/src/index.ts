@@ -72,6 +72,18 @@ export {
 } from "./repositories/InventoryMovementRepository.js";
 export { InventoryService, type ReceiveStockInput } from "./services/InventoryService.js";
 export {
+  InventoryUnitRepository,
+  type InventoryUnit,
+  type InventoryUnitTrackingMode,
+  type InventoryUnitStatus,
+  type CreateInventoryUnitInput,
+} from "./repositories/InventoryUnitRepository.js";
+export {
+  InventoryUnitService,
+  InvalidUnitStatusTransitionError,
+  type TransitionUnitStatusInput,
+} from "./services/InventoryUnitService.js";
+export {
   AUDIT_LOG_GENESIS_HASH,
   computeRowHash,
   type AuditLogRowForHash,
