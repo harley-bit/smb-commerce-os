@@ -241,3 +241,10 @@ export {
   type RecordCheckinInput,
   type RecordCheckinResult,
 } from "./services/ConditionReportService.js";
+export {
+  runMediaRetentionSqlite,
+  runMediaRetentionPg,
+  type MediaRetentionCandidate,
+  type MediaRetentionRunResult,
+  type MediaObjectDeleter,
+} from "./jobs/MediaRetentionJob.js";

@@ -19,6 +19,7 @@ export * from "./rentals/lateFeePolicy.js";
 export * from "./orders/cancellationPolicy.js";
 export * from "./payments/depositStateMachine.js";
 export * from "./payments/authorizationWindow.js";
+export * from "./media/mediaRetentionPolicy.js";
 
 export function workspaceGraphMarker(): string {
   return "@smb-os/domain";
