@@ -181,5 +181,12 @@ export {
   FulfillmentEventService,
   OrderLineNotFoundError,
   MissingFulfillmentNoteError,
+  MissingCheckoutConditionReportError,
   type RecordFulfillmentEventArgs,
 } from "./services/FulfillmentEventService.js";
+export {
+  ConditionReportRepository,
+  type ConditionReport,
+  type ConditionReportPhase,
+  type CreateConditionReportInput,
+} from "./repositories/ConditionReportRepository.js";

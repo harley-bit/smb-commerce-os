@@ -3,6 +3,7 @@ import type { MerchantUserRole } from "../repositories/MerchantUserRepository.js
 import type { OrderRepository } from "../repositories/OrderRepository.js";
 import type { FulfillmentEventRepository } from "../repositories/FulfillmentEventRepository.js";
 import type { ReservationRepository } from "../repositories/ReservationRepository.js";
+import type { ConditionReportRepository } from "../repositories/ConditionReportRepository.js";
 
 export interface RecordFulfillmentEventArgs {
   orderLineId: string;
@@ -31,6 +32,20 @@ export class MissingFulfillmentNoteError extends Error {
 }
 
 /**
+ * `docs/design/03` invariant I7 / `docs/cards/D072.md` security check —
+ * without a `CHECKOUT` condition report, a later damage claim against the
+ * customer has no documented baseline and is unwinnable. Thrown before the
+ * reservation transition and before the event is recorded, so an attempted
+ * pickup with no baseline leaves neither behind.
+ */
+export class MissingCheckoutConditionReportError extends Error {
+  constructor(public readonly orderLineId: string) {
+    super(`A CHECKOUT condition report is required before order line ${orderLineId} can reach IN_USE`);
+    this.name = "MissingCheckoutConditionReportError";
+  }
+}
+
+/**
  * `docs/cards/D070.md`/`D071.md` — PICKED_UP and RETURNED event handlers on
  * top of `FulfillmentEventRepository`'s append-only ledger. Authorization
  * reuses `bookings:manage`, the same action `RentalReservationService`/
@@ -55,6 +70,7 @@ export class FulfillmentEventService {
     private readonly orderLines: OrderRepository,
     private readonly events: FulfillmentEventRepository,
     private readonly reservations: ReservationRepository,
+    private readonly conditionReports: ConditionReportRepository,
   ) {}
 
   recordPickup(
@@ -93,6 +109,9 @@ export class FulfillmentEventService {
     const reservation = this.reservations.findByOrderLineId(ctx, input.orderLineId);
     if (reservation) {
       if (kind === "PICKED_UP") {
+        if (!this.conditionReports.hasCheckoutReport(ctx, input.orderLineId)) {
+          throw new MissingCheckoutConditionReportError(input.orderLineId);
+        }
         this.reservations.markPickedUp(ctx, reservation.id);
       } else {
         this.reservations.markReturned(ctx, reservation.id, input.occurredAt);

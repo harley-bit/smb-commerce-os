@@ -6,12 +6,16 @@ import * as sqliteSchema from "../schema/sqlite.js";
 import { ListingRepository } from "../repositories/ListingRepository.js";
 import { VariantRepository } from "../repositories/VariantRepository.js";
 import { OrderRepository } from "../repositories/OrderRepository.js";
+import { LocationRepository } from "../repositories/LocationRepository.js";
+import { InventoryUnitRepository } from "../repositories/InventoryUnitRepository.js";
 import { FulfillmentEventRepository } from "../repositories/FulfillmentEventRepository.js";
 import { ReservationRepository } from "../repositories/ReservationRepository.js";
+import { ConditionReportRepository } from "../repositories/ConditionReportRepository.js";
 import {
   FulfillmentEventService,
   OrderLineNotFoundError,
   MissingFulfillmentNoteError,
+  MissingCheckoutConditionReportError,
 } from "./FulfillmentEventService.js";
 import { ForbiddenActionError } from "@smb-os/domain";
 import type { MerchantUserRole } from "../repositories/MerchantUserRepository.js";
@@ -23,11 +27,15 @@ describe("FulfillmentEventService", () => {
   let orderRepo: OrderRepository;
   let eventRepo: FulfillmentEventRepository;
   let reservationRepo: ReservationRepository;
+  let locationRepo: LocationRepository;
+  let unitRepo: InventoryUnitRepository;
+  let conditionReportRepo: ConditionReportRepository;
   let service: FulfillmentEventService;
   let merchantA: string;
   let merchantB: string;
   let userA: string;
   let orderLineA: string;
+  let inventoryUnitA: string;
 
   beforeEach(async () => {
     connection = createConnection(":memory:");
@@ -37,7 +45,10 @@ describe("FulfillmentEventService", () => {
     orderRepo = new OrderRepository(connection);
     eventRepo = new FulfillmentEventRepository(connection);
     reservationRepo = new ReservationRepository(connection);
-    service = new FulfillmentEventService(orderRepo, eventRepo, reservationRepo);
+    locationRepo = new LocationRepository(connection);
+    unitRepo = new InventoryUnitRepository(connection);
+    conditionReportRepo = new ConditionReportRepository(connection);
+    service = new FulfillmentEventService(orderRepo, eventRepo, reservationRepo, conditionReportRepo);
 
     merchantA = generateUuidV7();
     merchantB = generateUuidV7();
@@ -75,6 +86,13 @@ describe("FulfillmentEventService", () => {
       currency: "USD",
       ratePeriod: "DAY",
       depositMinor: 20000,
+    });
+    const locationA = locationRepo.create(ctxA, { name: "Main", timezone: "UTC" });
+    inventoryUnitA = unitRepo.create(ctxA, {
+      variantId: variantA,
+      locationId: locationA,
+      unitCode: "UNIT-A-1",
+      trackingMode: "SERIALIZED",
     });
     const orderA = orderRepo.create(ctxA, { customerUserId: userA, status: "CONFIRMED", currency: "USD" });
     orderLineA = orderRepo.addLine(ctxA, orderA, {
@@ -177,7 +195,38 @@ describe("FulfillmentEventService", () => {
   });
 
   describe("reservation state transitions — docs/cards/D071.md", () => {
-    it("recordPickup() transitions the order line's linked reservation from CONFIRMED to IN_USE", () => {
+    it("recordPickup() transitions the order line's linked reservation from CONFIRMED to IN_USE when a CHECKOUT condition report exists", () => {
+      const ctx = createTenantContext(merchantA);
+      const reservationId = reservationRepo.create(ctx, {
+        orderLineId: orderLineA,
+        subjectType: "INVENTORY_UNIT",
+        subjectId: generateUuidV7(),
+        startsAt: "2026-09-08T09:00:00.000Z",
+        endsAt: "2026-09-10T09:00:00.000Z",
+        quantity: 1,
+        state: "CONFIRMED",
+        createdAt: "2026-09-08T08:00:00.000Z",
+      });
+      conditionReportRepo.create(ctx, {
+        orderLineId: orderLineA,
+        inventoryUnitId: inventoryUnitA,
+        phase: "CHECKOUT",
+        conditionGrade: "GOOD",
+        createdBy: userA,
+        createdAt: "2026-09-08T11:00:00.000Z",
+      });
+
+      service.recordPickup(ctx, "OWNER", {
+        orderLineId: orderLineA,
+        occurredAt: "2026-09-08T12:00:00.000Z",
+        actorUserId: userA,
+        note: "Customer picked up trailer at store.",
+      });
+
+      expect(reservationRepo.findById(ctx, reservationId)?.state).toEqual("IN_USE");
+    });
+
+    it("recordPickup() rejects the CONFIRMED -> IN_USE transition when no CHECKOUT condition report exists — I7", () => {
       const ctx = createTenantContext(merchantA);
       const reservationId = reservationRepo.create(ctx, {
         orderLineId: orderLineA,
@@ -190,14 +239,18 @@ describe("FulfillmentEventService", () => {
         createdAt: "2026-09-08T08:00:00.000Z",
       });
 
-      service.recordPickup(ctx, "OWNER", {
-        orderLineId: orderLineA,
-        occurredAt: "2026-09-08T12:00:00.000Z",
-        actorUserId: userA,
-        note: "Customer picked up trailer at store.",
-      });
+      expect(() =>
+        service.recordPickup(ctx, "OWNER", {
+          orderLineId: orderLineA,
+          occurredAt: "2026-09-08T12:00:00.000Z",
+          actorUserId: userA,
+          note: "Attempted pickup with no baseline condition report.",
+        }),
+      ).toThrow(MissingCheckoutConditionReportError);
 
-      expect(reservationRepo.findById(ctx, reservationId)?.state).toEqual("IN_USE");
+      // Neither the reservation nor the event log moved.
+      expect(reservationRepo.findById(ctx, reservationId)?.state).toEqual("CONFIRMED");
+      expect(eventRepo.listByOrderLine(ctx, orderLineA)).toEqual([]);
     });
 
     it("recordReturn() transitions the order line's linked reservation from IN_USE to COMPLETED", () => {
