@@ -674,3 +674,27 @@ export const damageClaims = sqliteTable("damage_claims", {
   resolvedAt: text("resolved_at"),
   resolutionNote: text("resolution_note"),
 });
+
+/**
+ * `docs/design/06` "Webhook handling" step 2 / `docs/cards/D092.md` — the
+ * idempotency anchor for *inbound* webhook deliveries themselves, keyed on
+ * the provider's own event id (Stripe's `evt_...`), which is distinct from
+ * `payments.provider_ref` (a payment/intent id, the anchor for the payment
+ * record once a handler processes an event). No merchant_id: a raw event
+ * hasn't been matched to an order/merchant yet at the point it's persisted
+ * here — that matching is later handler logic (D093+), not this table's
+ * job — so this is a plain global table like `users`, not tenant-scoped.
+ */
+export const webhookEvents = sqliteTable(
+  "webhook_events",
+  {
+    id: text("id").primaryKey(),
+    provider: text("provider").notNull(),
+    eventId: text("event_id").notNull(),
+    payloadJson: text("payload_json").notNull(),
+    receivedAt: text("received_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("webhook_events_provider_event_id_unique").on(table.provider, table.eventId),
+  ],
+);

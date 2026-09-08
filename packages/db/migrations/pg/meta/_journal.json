@@ -120,6 +120,13 @@
       "when": 1788895514896,
       "tag": "0016_legal_leper_queen",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1788906126680,
+      "tag": "0017_motionless_power_man",
+      "breakpoints": true
     }
   ]
 }

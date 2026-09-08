@@ -158,7 +158,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     rateLimit: options.availabilityRateLimit,
   });
   registerBookingRoutes(app, connection, availabilityCache);
-  registerWebhookRoutes(app, options.stripeWebhookSecret ?? "whsec_dev_placeholder");
+  registerWebhookRoutes(app, options.stripeWebhookSecret ?? "whsec_dev_placeholder", connection);
 
   app.addHook("onSend", async (request, reply, payload) => {
     void reply.header(REQUEST_ID_HEADER, request.id);

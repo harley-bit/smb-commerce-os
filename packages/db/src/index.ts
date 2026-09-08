@@ -274,3 +274,8 @@ export {
   type WebhookVerificationOptions,
   type WebhookVerificationResult,
 } from "./payments/WebhookSignatureVerifier.js";
+export {
+  WebhookEventRepository,
+  type WebhookEvent,
+  type RecordWebhookEventInput,
+} from "./repositories/WebhookEventRepository.js";

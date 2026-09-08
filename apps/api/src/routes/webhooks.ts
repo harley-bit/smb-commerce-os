@@ -1,6 +1,25 @@
 import type { FastifyInstance } from "fastify";
-import { verifyStripeWebhookSignature } from "@smb-os/db";
+import {
+  runSqliteMigrations,
+  verifyStripeWebhookSignature,
+  WebhookEventRepository,
+  type Connection,
+} from "@smb-os/db";
+import { DuplicateWebhookEventError } from "@smb-os/domain";
 import { problemType, sendProblem } from "../problemDetails.js";
+
+/**
+ * Lazily migrates `connection` on first use — same pattern as
+ * `./listings.ts`'s `createListingServiceFactory` / `./bookings.ts`'s
+ * `createBookingServiceFactory`.
+ */
+function createWebhookEventRepositoryFactory(connection: Connection): () => Promise<WebhookEventRepository> {
+  let ready: Promise<WebhookEventRepository> | null = null;
+  return () => {
+    ready ??= runSqliteMigrations(connection).then(() => new WebhookEventRepository(connection));
+    return ready;
+  };
+}
 
 declare module "fastify" {
   interface FastifyRequest {
@@ -28,11 +47,20 @@ const STRIPE_SIGNATURE_HEADER = "stripe-signature";
  * read past the raw string already captured for verification, so a forged
  * event is never parsed, matched to an order, or acted on.
  *
- * No event-handling logic lives here yet (D092 idempotency, D093 ordering,
- * and the deposit-release wiring itself are later cards in this phase) —
- * this card's scope is the verification gate alone.
+ * `docs/cards/D092.md` adds the idempotency step: once verified, the event
+ * is recorded by its own provider event id (`WebhookEventRepository`,
+ * `(provider, event_id)` unique) before any further processing. A retried
+ * delivery of an already-seen event id hits the repository's unique index
+ * and is recognized as a duplicate — logged and answered 200 without being
+ * reprocessed — rather than raced through a check-then-insert.
+ *
+ * D093 (ordering tolerance) and the actual deposit-release wiring are
+ * still later cards in this phase — this card's scope is verify, dedupe,
+ * and persist the raw event, nothing more.
  */
-export function registerWebhookRoutes(app: FastifyInstance, webhookSecret: string): void {
+export function registerWebhookRoutes(app: FastifyInstance, webhookSecret: string, connection: Connection): void {
+  const getWebhookEvents = createWebhookEventRepositoryFactory(connection);
+
   app.post("/webhooks/stripe", async (request, reply) => {
     const signatureHeader = request.headers[STRIPE_SIGNATURE_HEADER];
     const rawBody = request.rawBody ?? "";
@@ -46,6 +74,29 @@ export function registerWebhookRoutes(app: FastifyInstance, webhookSecret: strin
       );
       sendProblem(request, reply, 400, problemType("bad-request"), "Bad Request", "Invalid webhook signature.");
       return;
+    }
+
+    const event = result.event as { id?: unknown };
+    const eventId = typeof event.id === "string" ? event.id : undefined;
+    if (!eventId) {
+      sendProblem(request, reply, 400, problemType("bad-request"), "Bad Request", "Webhook event is missing an id.");
+      return;
+    }
+
+    const webhookEvents = await getWebhookEvents();
+    try {
+      webhookEvents.record({
+        provider: "STRIPE",
+        eventId,
+        payloadJson: rawBody,
+        receivedAt: new Date().toISOString(),
+      });
+    } catch (err) {
+      if (err instanceof DuplicateWebhookEventError) {
+        request.log.info({ provider: "STRIPE", eventId }, "duplicate Stripe webhook delivery, not reprocessed");
+        return reply.code(200).send({ received: true, duplicate: true });
+      }
+      throw err;
     }
 
     return reply.code(200).send({ received: true });
