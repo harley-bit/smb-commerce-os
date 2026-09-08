@@ -155,3 +155,8 @@ export {
   AvailabilityRangeTooLargeError,
   ResourceNotFoundError,
 } from "./services/AvailabilityService.js";
+export {
+  BookingService,
+  MissingIdempotencyKeyError,
+  type CreateServiceBookingInput,
+} from "./services/BookingService.js";

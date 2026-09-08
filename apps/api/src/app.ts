@@ -6,6 +6,7 @@ import type { AuthProvider } from "@smb-os/domain";
 import { AvailabilityCache, createConnection as createDbConnection, type Connection } from "@smb-os/db";
 import { problemType, sendProblem } from "./problemDetails.js";
 import { registerAvailabilityRoutes } from "./routes/availability.js";
+import { registerBookingRoutes } from "./routes/bookings.js";
 import { registerListingRoutes } from "./routes/listings.js";
 import {
   AccountLockedError,
@@ -125,10 +126,12 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   );
 
   const connection = options.connection ?? createDbConnection(":memory:");
+  const availabilityCache = options.availabilityCache ?? new AvailabilityCache();
   registerListingRoutes(app, connection);
-  registerAvailabilityRoutes(app, connection, options.availabilityCache ?? new AvailabilityCache(), {
+  registerAvailabilityRoutes(app, connection, availabilityCache, {
     rateLimit: options.availabilityRateLimit,
   });
+  registerBookingRoutes(app, connection, availabilityCache);
 
   app.addHook("onSend", async (request, reply, payload) => {
     void reply.header(REQUEST_ID_HEADER, request.id);
