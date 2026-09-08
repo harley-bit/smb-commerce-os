@@ -1,8 +1,10 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "permissions": {
+    "defaultMode": "dontAsk",
     "allow": [
       "Bash(*)",
+      "Monitor",
       "Read(/Users/harleybarrales/Documents/Git Code Base/smb-commerce-os/**)",
       "Edit(/Users/harleybarrales/Documents/Git Code Base/smb-commerce-os/**)",
       "WebFetch",

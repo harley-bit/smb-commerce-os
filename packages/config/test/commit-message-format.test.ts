@@ -56,4 +56,24 @@ describe("commit-msg hook (.githooks/commit-msg)", () => {
     const result = runHook("fix:");
     expect(result.status).not.toBe(0);
   });
+
+  it("accepts git's own auto-generated merge-branch message", () => {
+    const result = runHook("Merge branch 'main' into feat/foo");
+    expect(result.status).toBe(0);
+  });
+
+  it("accepts git's own auto-generated merge-remote-tracking-branch message", () => {
+    const result = runHook("Merge remote-tracking branch 'origin/main' into docs/foo");
+    expect(result.status).toBe(0);
+  });
+
+  it("accepts a GitHub squash-merge pull-request message", () => {
+    const result = runHook("Merge pull request #4 from harley-bit/docs/foo");
+    expect(result.status).toBe(0);
+  });
+
+  it("still rejects a non-conventional message that merely mentions merging", () => {
+    const result = runHook("merged some stuff together");
+    expect(result.status).not.toBe(0);
+  });
 });
