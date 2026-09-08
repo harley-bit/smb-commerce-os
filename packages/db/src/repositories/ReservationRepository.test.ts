@@ -1,0 +1,232 @@
+import { createTenantContext, generateUuidV7 } from "@smb-os/domain";
+import { beforeEach, describe, expect, it } from "vitest";
+import { createConnection, type Connection } from "../connection.js";
+import { runSqliteMigrations } from "../migrate.js";
+import * as sqliteSchema from "../schema/sqlite.js";
+import { ReservationRepository } from "./ReservationRepository.js";
+
+describe("ReservationRepository", () => {
+  let connection: Connection;
+  let repo: ReservationRepository;
+  let merchantA: string;
+  let merchantB: string;
+  let resourceA: string;
+  let resourceB: string;
+
+  beforeEach(async () => {
+    connection = createConnection(":memory:");
+    await runSqliteMigrations(connection);
+    repo = new ReservationRepository(connection);
+
+    merchantA = generateUuidV7();
+    merchantB = generateUuidV7();
+
+    await connection.db.insert(sqliteSchema.merchants).values([
+      {
+        id: merchantA,
+        name: "Merchant A",
+        slug: "merchant-a",
+        status: "ACTIVE",
+        defaultCurrency: "USD",
+        createdAt: "2026-09-08T00:00:00.000Z",
+      },
+      {
+        id: merchantB,
+        name: "Merchant B",
+        slug: "merchant-b",
+        status: "ACTIVE",
+        defaultCurrency: "USD",
+        createdAt: "2026-09-08T00:00:00.000Z",
+      },
+    ]);
+
+    const locationA = generateUuidV7();
+    const locationB = generateUuidV7();
+    await connection.db.insert(sqliteSchema.locations).values([
+      { id: locationA, merchantId: merchantA, name: "Main", timezone: "UTC" },
+      { id: locationB, merchantId: merchantB, name: "Main", timezone: "UTC" },
+    ]);
+
+    resourceA = generateUuidV7();
+    resourceB = generateUuidV7();
+    await connection.db.insert(sqliteSchema.resources).values([
+      { id: resourceA, merchantId: merchantA, locationId: locationA, kind: "STAFF", name: "Jane", capacity: 1 },
+      { id: resourceB, merchantId: merchantB, locationId: locationB, kind: "STAFF", name: "Jo", capacity: 1 },
+    ]);
+  });
+
+  it("findBlocking() returns a HELD reservation overlapping the query range", () => {
+    const ctx = createTenantContext(merchantA);
+    repo.create(ctx, {
+      subjectType: "RESOURCE",
+      subjectId: resourceA,
+      startsAt: "2026-10-01T09:00:00.000Z",
+      endsAt: "2026-10-01T10:00:00.000Z",
+      quantity: 1,
+      state: "HELD",
+      expiresAt: "2026-10-01T09:15:00.000Z",
+      createdAt: "2026-10-01T08:45:00.000Z",
+    });
+
+    const rows = repo.findBlocking(
+      ctx,
+      "RESOURCE",
+      resourceA,
+      "2026-10-01T09:30:00.000Z",
+      "2026-10-01T11:00:00.000Z",
+      "2026-10-01T09:00:00.000Z",
+    );
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ state: "HELD", subjectId: resourceA });
+  });
+
+  it("findBlocking() excludes non-overlapping intervals before or after the range", () => {
+    const ctx = createTenantContext(merchantA);
+    repo.create(ctx, {
+      subjectType: "RESOURCE",
+      subjectId: resourceA,
+      startsAt: "2026-10-01T06:00:00.000Z",
+      endsAt: "2026-10-01T07:00:00.000Z",
+      quantity: 1,
+      state: "CONFIRMED",
+      createdAt: "2026-10-01T05:00:00.000Z",
+    });
+    repo.create(ctx, {
+      subjectType: "RESOURCE",
+      subjectId: resourceA,
+      startsAt: "2026-10-01T12:00:00.000Z",
+      endsAt: "2026-10-01T13:00:00.000Z",
+      quantity: 1,
+      state: "CONFIRMED",
+      createdAt: "2026-10-01T05:00:00.000Z",
+    });
+
+    const rows = repo.findBlocking(
+      ctx,
+      "RESOURCE",
+      resourceA,
+      "2026-10-01T09:00:00.000Z",
+      "2026-10-01T10:00:00.000Z",
+      "2026-10-01T08:00:00.000Z",
+    );
+
+    expect(rows).toEqual([]);
+  });
+
+  it("excludes COMPLETED, CANCELLED, and EXPIRED reservations even when the interval overlaps", () => {
+    const ctx = createTenantContext(merchantA);
+    const nonBlockingStates = ["COMPLETED", "CANCELLED", "EXPIRED"] as const;
+
+    for (const state of nonBlockingStates) {
+      repo.create(ctx, {
+        subjectType: "RESOURCE",
+        subjectId: resourceA,
+        startsAt: "2026-10-01T09:00:00.000Z",
+        endsAt: "2026-10-01T10:00:00.000Z",
+        quantity: 1,
+        state,
+        createdAt: "2026-10-01T08:00:00.000Z",
+      });
+    }
+
+    const rows = repo.findBlocking(
+      ctx,
+      "RESOURCE",
+      resourceA,
+      "2026-10-01T09:00:00.000Z",
+      "2026-10-01T10:00:00.000Z",
+      "2026-10-01T08:00:00.000Z",
+    );
+
+    expect(rows).toEqual([]);
+  });
+
+  it("security: a HELD reservation whose hold has expired must not block, even though its state is still HELD", () => {
+    const ctx = createTenantContext(merchantA);
+    repo.create(ctx, {
+      subjectType: "RESOURCE",
+      subjectId: resourceA,
+      startsAt: "2026-10-01T09:00:00.000Z",
+      endsAt: "2026-10-01T10:00:00.000Z",
+      quantity: 1,
+      state: "HELD",
+      expiresAt: "2026-10-01T09:05:00.000Z",
+      createdAt: "2026-10-01T08:45:00.000Z",
+    });
+
+    const asOfAfterExpiry = "2026-10-01T09:10:00.000Z";
+    const rows = repo.findBlocking(
+      ctx,
+      "RESOURCE",
+      resourceA,
+      "2026-10-01T09:00:00.000Z",
+      "2026-10-01T10:00:00.000Z",
+      asOfAfterExpiry,
+    );
+
+    expect(rows).toEqual([]);
+  });
+
+  it("a HELD reservation still within its hold window does block", () => {
+    const ctx = createTenantContext(merchantA);
+    repo.create(ctx, {
+      subjectType: "RESOURCE",
+      subjectId: resourceA,
+      startsAt: "2026-10-01T09:00:00.000Z",
+      endsAt: "2026-10-01T10:00:00.000Z",
+      quantity: 1,
+      state: "HELD",
+      expiresAt: "2026-10-01T09:15:00.000Z",
+      createdAt: "2026-10-01T08:45:00.000Z",
+    });
+
+    const asOfBeforeExpiry = "2026-10-01T09:10:00.000Z";
+    const rows = repo.findBlocking(
+      ctx,
+      "RESOURCE",
+      resourceA,
+      "2026-10-01T09:00:00.000Z",
+      "2026-10-01T10:00:00.000Z",
+      asOfBeforeExpiry,
+    );
+
+    expect(rows).toHaveLength(1);
+  });
+
+  it("findBlocking() is tenant-scoped — cannot see another merchant's reservations for a same-shaped subject id", () => {
+    const ctxA = createTenantContext(merchantA);
+    const ctxB = createTenantContext(merchantB);
+
+    repo.create(ctxB, {
+      subjectType: "RESOURCE",
+      subjectId: resourceB,
+      startsAt: "2026-10-01T09:00:00.000Z",
+      endsAt: "2026-10-01T10:00:00.000Z",
+      quantity: 1,
+      state: "CONFIRMED",
+      createdAt: "2026-10-01T08:00:00.000Z",
+    });
+
+    const rows = repo.findBlocking(
+      ctxA,
+      "RESOURCE",
+      resourceB,
+      "2026-10-01T09:00:00.000Z",
+      "2026-10-01T10:00:00.000Z",
+      "2026-10-01T08:00:00.000Z",
+    );
+
+    expect(rows).toEqual([]);
+  });
+
+  it("findBlocking() query plan uses the reservations_subject_interval_idx index", () => {
+    const ctx = createTenantContext(merchantA);
+    const plan = repo
+      .explainFindBlocking(ctx, "RESOURCE", resourceA, "2026-10-01T09:00:00.000Z", "2026-10-01T10:00:00.000Z", "2026-10-01T08:00:00.000Z")
+      .map((row) => row.detail)
+      .join(" | ");
+
+    expect(plan).toContain("reservations_subject_interval_idx");
+  });
+});
