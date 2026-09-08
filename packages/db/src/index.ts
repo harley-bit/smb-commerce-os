@@ -138,6 +138,14 @@ export {
   type DepositReleaseCustomerNotifier,
 } from "./jobs/DepositAutoReleaseJob.js";
 export {
+  detectOverdueReservationsSqlite,
+  detectOverdueReservationsPg,
+  type OverdueReservation,
+  type LateReturnDetectionResult,
+  type OverdueReservationNotifier,
+  type LateReturnNotifiers,
+} from "./jobs/LateReturnDetector.js";
+export {
   ResourceRepository,
   type Resource,
   type ResourceKind,
