@@ -23,21 +23,21 @@ This ADR answers all three together, because the strongest argument in play is a
 
 ### Option A — TypeScript across the stack ✅ RECOMMENDED
 
-| Layer | Choice |
-|---|---|
-| Backend API | Node.js + Fastify (TypeScript) |
-| Database access | Drizzle ORM |
-| Web | React via Next.js |
-| Mobile | React Native via Expo |
-| Shared | pnpm monorepo; shared types and Zod validation schemas |
+| Layer           | Choice                                                 |
+| --------------- | ------------------------------------------------------ |
+| Backend API     | Node.js + Fastify (TypeScript)                         |
+| Database access | Drizzle ORM                                            |
+| Web             | React via Next.js                                      |
+| Mobile          | React Native via Expo                                  |
+| Shared          | pnpm monorepo; shared types and Zod validation schemas |
 
 ### Option B — Python backend, React frontends
 
-| Layer | Choice |
-|---|---|
+| Layer       | Choice                                |
+| ----------- | ------------------------------------- |
 | Backend API | Python + FastAPI, SQLAlchemy, Alembic |
-| Web | React via Next.js |
-| Mobile | React Native via Expo |
+| Web         | React via Next.js                     |
+| Mobile      | React Native via Expo                 |
 
 ### Option C — Full-stack Next.js
 
@@ -45,19 +45,19 @@ One Next.js application serving both UI and API routes, with Expo for mobile.
 
 ## Evaluation
 
-| Criterion | A — TS everywhere | B — Python + React | C — Full-stack Next |
-|---|---|---|---|
-| One language across API, web, mobile | ✅ Yes | ❌ Two languages | ✅ Yes |
-| **Shared validation schemas** | ✅ One Zod schema validates at API, web, and mobile | ❌ Duplicated in Python and TS | ✅ Yes |
-| SQLite → PostgreSQL portability | ✅ Drizzle targets both | ✅ SQLAlchemy targets both | ✅ Drizzle |
-| Support for PostgreSQL exclusion constraints | ⚠️ Raw SQL migration | ⚠️ Raw SQL migration | ⚠️ Raw SQL migration |
-| Mobile from the same codebase | ✅ Expo | ✅ Expo | ✅ Expo |
-| Clean API boundary for mobile and future partners | ✅ Separate service | ✅ Separate service | ❌ API coupled to web app |
-| Security boundary clarity | ✅ Explicit | ✅ Explicit | ⚠️ Blurred — easy to leak server code into client bundles |
-| Contract engineering availability | ✅ Largest pool | ⚠️ Split skill set | ✅ Large |
-| Fit for scheduling/interval logic | ✅ Fine | ✅ Fine | ✅ Fine |
-| Fit for future data/ML work | ⚠️ Weaker | ✅ Stronger | ⚠️ Weaker |
-| Moving parts to operate | Medium | Medium-high | Lowest |
+| Criterion                                         | A — TS everywhere                                   | B — Python + React             | C — Full-stack Next                                       |
+| ------------------------------------------------- | --------------------------------------------------- | ------------------------------ | --------------------------------------------------------- |
+| One language across API, web, mobile              | ✅ Yes                                              | ❌ Two languages               | ✅ Yes                                                    |
+| **Shared validation schemas**                     | ✅ One Zod schema validates at API, web, and mobile | ❌ Duplicated in Python and TS | ✅ Yes                                                    |
+| SQLite → PostgreSQL portability                   | ✅ Drizzle targets both                             | ✅ SQLAlchemy targets both     | ✅ Drizzle                                                |
+| Support for PostgreSQL exclusion constraints      | ⚠️ Raw SQL migration                                | ⚠️ Raw SQL migration           | ⚠️ Raw SQL migration                                      |
+| Mobile from the same codebase                     | ✅ Expo                                             | ✅ Expo                        | ✅ Expo                                                   |
+| Clean API boundary for mobile and future partners | ✅ Separate service                                 | ✅ Separate service            | ❌ API coupled to web app                                 |
+| Security boundary clarity                         | ✅ Explicit                                         | ✅ Explicit                    | ⚠️ Blurred — easy to leak server code into client bundles |
+| Contract engineering availability                 | ✅ Largest pool                                     | ⚠️ Split skill set             | ✅ Large                                                  |
+| Fit for scheduling/interval logic                 | ✅ Fine                                             | ✅ Fine                        | ✅ Fine                                                   |
+| Fit for future data/ML work                       | ⚠️ Weaker                                           | ✅ Stronger                    | ⚠️ Weaker                                                 |
+| Moving parts to operate                           | Medium                                              | Medium-high                    | Lowest                                                    |
 
 ## Decision
 
@@ -79,22 +79,22 @@ Python is the better choice if the platform later does serious data or machine-l
 
 ## Stack, in full
 
-| Concern | Choice |
-|---|---|
-| Language | TypeScript, strict mode, no implicit `any` |
-| Runtime | Node.js LTS |
-| API framework | Fastify |
-| Validation | Zod, shared package |
-| ORM / migrations | Drizzle + drizzle-kit, with raw SQL migrations for constraints |
-| Database (local) | SQLite, WAL mode |
-| Database (target) | PostgreSQL on AWS (`04`, `11`) |
-| Web | Next.js (React) |
-| Mobile | Expo (React Native) |
-| Monorepo | pnpm workspaces + Turborepo |
-| Testing | Vitest (unit, integration), Playwright (end-to-end) |
-| Auth | Managed provider — decision D4, `07` |
-| Payments | Stripe Connect, hosted fields only |
-| Lint / format | ESLint + Prettier, enforced in CI |
+| Concern           | Choice                                                         |
+| ----------------- | -------------------------------------------------------------- |
+| Language          | TypeScript, strict mode, no implicit `any`                     |
+| Runtime           | Node.js LTS                                                    |
+| API framework     | Fastify                                                        |
+| Validation        | Zod, shared package                                            |
+| ORM / migrations  | Drizzle + drizzle-kit, with raw SQL migrations for constraints |
+| Database (local)  | SQLite, WAL mode                                               |
+| Database (target) | PostgreSQL on AWS (`04`, `11`)                                 |
+| Web               | Next.js (React)                                                |
+| Mobile            | Expo (React Native)                                            |
+| Monorepo          | pnpm workspaces + Turborepo                                    |
+| Testing           | Vitest (unit, integration), Playwright (end-to-end)            |
+| Auth              | Managed provider — decision D4, `07`                           |
+| Payments          | Stripe Connect, hosted fields only                             |
+| Lint / format     | ESLint + Prettier, enforced in CI                              |
 
 ## Repository layout
 
@@ -103,6 +103,7 @@ Python is the better choice if the platform later does serious data or machine-l
   /api          Fastify service — the only thing that touches the database
   /web          Next.js merchant dashboard + customer storefront
   /mobile       Expo customer app
+  /admin        Next.js platform admin console — separate app, separate hostname (Phase 11, `16`)
 /packages
   /domain       Entities, invariants, state machines — no I/O, no framework
   /db           Drizzle schema, migrations, repositories
@@ -123,8 +124,8 @@ Python is the better choice if the platform later does serious data or machine-l
 
 ## Ratification
 
-| Field | Value |
-|---|---|
-| Decision | ☑ Accepted |
-| Date | 2026-09-07 |
-| Notes | Accepted as proposed, no modifications. |
+| Field    | Value                                   |
+| -------- | --------------------------------------- |
+| Decision | ☑ Accepted                              |
+| Date     | 2026-09-07                              |
+| Notes    | Accepted as proposed, no modifications. |

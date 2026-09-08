@@ -3,7 +3,8 @@
 **Last updated:** 2026-09-07 (D002 done)
 **Execution model:** token-maxing — sessions run back-to-back until the account's usage limit is hit, then resume automatically once it refreshes (see `docs/design/12_daily_build_protocol.md` and the "Token-maxing execution" note in `CLAUDE.md`). Elapsed calendar time is therefore driven by usage-limit cadence, not a fixed days-per-week number. **Day ID is the only reliable sequence marker — do not infer progress from dates.**
 **Projected MVP gate (G7):** provisional only until real throughput is observed over the first ~10 cards. See `docs/BUILD_CALENDAR.md` for the full sequence.
-**Per-card duration estimates:** every row in `docs/BUILD_CALENDAR.md`, the xlsx dashboard, and each `docs/cards/{DAY_ID}.md` now carries an "Est. Duration" figure — a heuristic planning estimate (by phase, weighted up for concurrency/deposit/payment/gate-review complexity) for an AI-assisted session, not a human day and not a commitment. Sum across all 176 cards is ~473.5 hours. **Treat this the same as the projected MVP gate date: recalibrate against real `docs/logs/` actual-effort data once cards start closing, don't defend the original number.**
+**Per-card duration estimates:** every row in `docs/BUILD_CALENDAR.md`, the xlsx dashboard, and each `docs/cards/{DAY_ID}.md` now carries an "Est. Duration" figure — a heuristic planning estimate (by phase, weighted up for concurrency/deposit/payment/gate-review complexity) for an AI-assisted session, not a human day and not a commitment. Sum across the original 176 cards is ~473.5 hours; Phase 11 (`D177`–`D197`, added 2026-09-08) adds ~45.5 hours across 21 cards, for a running total of ~519 hours across 197 cards. **Treat this the same as the projected MVP gate date: recalibrate against real `docs/logs/` actual-effort data once cards start closing, don't defend the original number.**
+**Phase 11 — Platform admin console** (`D177`–`D197`, Gate G11) was added 2026-09-08 at founder request — a platform-staff/power-user surface (break-glass support access, merchant lifecycle, reporting, feature flags, platform role management) that the original coworker plan never scoped. Full design: `docs/design/16_platform_admin_console.md`. Placed after Phase 10 so it doesn't renumber any already-built card; does not block `G7` or `G10`, but Epic A (`D177`–`D182`) should land before the pilot has been live long enough to need a real support incident handled.
 
 ## Current phase
 
@@ -12,18 +13,18 @@
 ## Current card
 
 **Next up: [`D003`](../docs/cards/D003.md) — Lint and format rules.**
-Full task, deliverable, acceptance criteria, and security check are in the card file itself — that file, not this one, is the source of truth for what D003 actually requires. This file only tracks *where we are*, not *what to do*.
+Full task, deliverable, acceptance criteria, and security check are in the card file itself — that file, not this one, is the source of truth for what D003 actually requires. This file only tracks _where we are_, not _what to do_.
 
 ## Open decisions (blocking, from `docs/design/00_README.md`)
 
-| # | Decision | Status |
-|---|---|---|
-| D1 | Ratify ADR-001 stack recommendation | **Answered — accepted as proposed.** TypeScript everywhere: Fastify, Drizzle, Next.js, Expo, pnpm monorepo. `docs/design/02_ADR_001_stack_decision.md`'s ratification table can be marked Accepted. |
-| D2 | Confirm build cadence (drives every date) | **Answered** — 5–6 sessions/week, Claude as builder. |
-| D3 | Mobile in MVP or post-pilot | **Answered — deferred to Phase 8**, post-web-MVP (G7). Matches the phase plan as written; revisit once the web pilot is live. |
-| D4 | Identity provider | **Answered — native for now, Auth0 later.** Build authentication in-house behind an `AuthProvider` interface; wire in Auth0 when it's actually time, as a provider swap, not a rewrite. Full spec: [`docs/adr/ADR-002-authentication-provider.md`](adr/ADR-002-authentication-provider.md). This is a real scope change to D010 (was an OIDC/Cognito spike, now a native auth implementation) — `docs/cards/D010.md` has been rewritten accordingly. |
+| #   | Decision                                  | Status                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| --- | ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D1  | Ratify ADR-001 stack recommendation       | **Answered — accepted as proposed.** TypeScript everywhere: Fastify, Drizzle, Next.js, Expo, pnpm monorepo. `docs/design/02_ADR_001_stack_decision.md`'s ratification table can be marked Accepted.                                                                                                                                                                                                                                                  |
+| D2  | Confirm build cadence (drives every date) | **Answered** — 5–6 sessions/week, Claude as builder.                                                                                                                                                                                                                                                                                                                                                                                                 |
+| D3  | Mobile in MVP or post-pilot               | **Answered — deferred to Phase 8**, post-web-MVP (G7). Matches the phase plan as written; revisit once the web pilot is live.                                                                                                                                                                                                                                                                                                                        |
+| D4  | Identity provider                         | **Answered — native for now, Auth0 later.** Build authentication in-house behind an `AuthProvider` interface; wire in Auth0 when it's actually time, as a provider swap, not a rewrite. Full spec: [`docs/adr/ADR-002-authentication-provider.md`](adr/ADR-002-authentication-provider.md). This is a real scope change to D010 (was an OIDC/Cognito spike, now a native auth implementation) — `docs/cards/D010.md` has been rewritten accordingly. |
 
-**No decisions remain blocking.** D001 is ready to run.
+**No decisions remain blocking.**
 
 ## Carried-over notes for next session
 

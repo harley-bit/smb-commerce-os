@@ -12,41 +12,31 @@ The business context — market, pricing, geography, monetization — lives else
 
 ## Design constraints (fixed)
 
-| Constraint | Decision |
-|---|---|
-| Database, local | **SQLite** — WAL mode, single-writer serialization |
-| Database, target | **AWS-hosted PostgreSQL** — schema written for portability from day one (`04`) |
-| Codebase | Web and mobile — resolved in ADR-001 (`02`) |
-| Security | **Security-first**, not retrofitted. Controls designed before features (`07`) |
-| Compliance | Documentation produced as a by-product of the build, not a later exercise (`09`) |
-| Cadence | Daily buildable increments (`12`), weekly review (`13`) |
+| Constraint       | Decision                                                                         |
+| ---------------- | -------------------------------------------------------------------------------- |
+| Database, local  | **SQLite** — WAL mode, single-writer serialization                               |
+| Database, target | **AWS-hosted PostgreSQL** — schema written for portability from day one (`04`)   |
+| Codebase         | Web and mobile — resolved in ADR-001 (`02`)                                      |
+| Security         | **Security-first**, not retrofitted. Controls designed before features (`07`)    |
+| Compliance       | Documentation produced as a by-product of the build, not a later exercise (`09`) |
+| Cadence          | Daily buildable increments (`12`), weekly review (`13`)                          |
 
 ## Documents
 
 **Strategy and decisions**
+
 1. `01_phasing_and_mvp_definition.md` — phases, gates, and what MVP does and does not include
 2. `02_ADR_001_stack_decision.md` — the web and mobile codebase decision, with recommendation
 
-**Architecture**
-3. `03_domain_model_and_schema.md` — the unified three-mode model and full table design
-4. `04_database_portability_sqlite_to_aws.md` — SQLite now, PostgreSQL later, without a rewrite
-5. `05_availability_inventory_and_concurrency.md` — the correctness core: no double-booking, no overselling
-6. `06_api_contracts_and_service_boundaries.md` — API surface and internal boundaries
+**Architecture** 3. `03_domain_model_and_schema.md` — the unified three-mode model and full table design 4. `04_database_portability_sqlite_to_aws.md` — SQLite now, PostgreSQL later, without a rewrite 5. `05_availability_inventory_and_concurrency.md` — the correctness core: no double-booking, no overselling 6. `06_api_contracts_and_service_boundaries.md` — API surface and internal boundaries
 
-**Security, privacy, compliance**
-7. `07_security_architecture_and_threat_model.md` — controls and STRIDE analysis
-8. `08_privacy_data_protection_and_retention.md` — data classification, retention, subject rights
-9. `09_compliance_control_mapping_and_evidence.md` — PCI, SOC 2, NIST CSF, state privacy; evidence-by-design
-10. `10_secure_sdlc_ci_and_quality_gates.md` — pipeline, scanning, branch protection, test strategy
+**Security, privacy, compliance** 7. `07_security_architecture_and_threat_model.md` — controls and STRIDE analysis 8. `08_privacy_data_protection_and_retention.md` — data classification, retention, subject rights 9. `09_compliance_control_mapping_and_evidence.md` — PCI, SOC 2, NIST CSF, state privacy; evidence-by-design 10. `10_secure_sdlc_ci_and_quality_gates.md` — pipeline, scanning, branch protection, test strategy
 
-**Execution**
-11. `11_environments_and_aws_target_architecture.md` — local, staging, production
-12. `12_daily_build_protocol.md` — the repeatable daily loop
-13. `13_weekly_review_protocol.md` — the weekly review agenda and template
-14. `implementation_calendar/build_calendar.xlsx` — dated day-by-day plan, weekly review log, phase summary (see `../implementation_calendar/build_calendar.xlsx` — human-facing dashboard; `../BUILD_CALENDAR.md` is the version Claude reads/writes)
+**Execution** 11. `11_environments_and_aws_target_architecture.md` — local, staging, production 12. `12_daily_build_protocol.md` — the repeatable daily loop 13. `13_weekly_review_protocol.md` — the weekly review agenda and template 14. `implementation_calendar/build_calendar.xlsx` — dated day-by-day plan, weekly review log, phase summary (see `../implementation_calendar/build_calendar.xlsx` — human-facing dashboard; `../BUILD_CALENDAR.md` is the version Claude reads/writes)
 
-**Reference (superseded in parts, kept for its diagrams)**
-15. `15_legacy_application_flow_diagrams.md` — pre-technical-plan flow sketches, moved here from the business-planning folder; read its banner before using anything but the diagrams themselves
+**Reference (superseded in parts, kept for its diagrams)** 15. `15_legacy_application_flow_diagrams.md` — pre-technical-plan flow sketches, moved here from the business-planning folder; read its banner before using anything but the diagrams themselves
+
+**New scope (added 2026-09-08)** 16. `16_platform_admin_console.md` — platform-staff/power-user UI and workflow: break-glass support access, merchant lifecycle, reporting, feature flags, platform role management. Placed as Phase 11 (`D177`–`D197`), after `10` so it doesn't renumber any built card. Amends `03` and `07`.
 
 ## How to use this
 
@@ -57,12 +47,12 @@ The business context — market, pricing, geography, monetization — lives else
 
 ## Blocking decisions — all resolved (see `docs/BUILD_STATE.md` for the live record)
 
-| # | Decision | Resolution |
-|---|---|---|
-| D1 | Ratify ADR-001 stack recommendation | **Accepted as proposed** (2026-09-07) |
-| D2 | Confirm build cadence | **Claude executes continuously (token-maxing)**, not a fixed days/week human cadence |
-| D3 | Mobile in MVP or post-pilot | **Deferred to Phase 8**, post-web-MVP |
-| D4 | Identity provider | **Native auth now, Auth0-ready interface, Auth0 wired in later** — see `docs/adr/ADR-002-authentication-provider.md`, which also rewrote card D010 |
+| #   | Decision                            | Resolution                                                                                                                                         |
+| --- | ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D1  | Ratify ADR-001 stack recommendation | **Accepted as proposed** (2026-09-07)                                                                                                              |
+| D2  | Confirm build cadence               | **Claude executes continuously (token-maxing)**, not a fixed days/week human cadence                                                               |
+| D3  | Mobile in MVP or post-pilot         | **Deferred to Phase 8**, post-web-MVP                                                                                                              |
+| D4  | Identity provider                   | **Native auth now, Auth0-ready interface, Auth0 wired in later** — see `docs/adr/ADR-002-authentication-provider.md`, which also rewrote card D010 |
 
 ## Principles
 
