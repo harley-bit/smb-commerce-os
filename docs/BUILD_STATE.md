@@ -1,6 +1,6 @@
 # Build State
 
-**Last updated:** 2026-09-07 (D004 done)
+**Last updated:** 2026-09-07 (D005 done)
 **Execution model:** token-maxing — sessions run back-to-back until the account's usage limit is hit, then resume automatically once it refreshes (see `docs/design/12_daily_build_protocol.md` and the "Token-maxing execution" note in `CLAUDE.md`). Elapsed calendar time is therefore driven by usage-limit cadence, not a fixed days-per-week number. **Day ID is the only reliable sequence marker — do not infer progress from dates.**
 **Projected MVP gate (G7):** provisional only until real throughput is observed over the first ~10 cards. See `docs/BUILD_CALENDAR.md` for the full sequence.
 **Per-card duration estimates:** every row in `docs/BUILD_CALENDAR.md`, the xlsx dashboard, and each `docs/cards/{DAY_ID}.md` now carries an "Est. Duration" figure — a heuristic planning estimate (by phase, weighted up for concurrency/deposit/payment/gate-review complexity) for an AI-assisted session, not a human day and not a commitment. Sum across the original 176 cards is ~473.5 hours; Phase 11 (`D177`–`D197`, added 2026-09-08) adds ~45.5 hours across 21 cards, for a running total of ~519 hours across 197 cards. **Treat this the same as the projected MVP gate date: recalibrate against real `docs/logs/` actual-effort data once cards start closing, don't defend the original number.**
@@ -8,12 +8,12 @@
 
 ## Current phase
 
-**Phase 0 — Foundations and security baseline** (`D001`–`D012`). Underway — D001–D004 done; pnpm workspace + Turborepo scaffolding is live with a regression-tested strict TypeScript baseline, repo-wide ESLint + Prettier with a custom rule banning raw SQL outside `packages/db`, and Vitest coverage enforcement (domain package at 95%).
+**Phase 0 — Foundations and security baseline** (`D001`–`D012`). Underway — D001–D005 done; pnpm workspace + Turborepo scaffolding is live with a regression-tested strict TypeScript baseline, repo-wide ESLint + Prettier with a custom rule banning raw SQL outside `packages/db`, Vitest coverage enforcement (domain package at 95%), and a GitHub Actions CI skeleton (install/lint/typecheck/test on every PR).
 
 ## Current card
 
-**Next up: [`D005`](../docs/cards/D005.md) — CI pipeline skeleton.**
-Full task, deliverable, acceptance criteria, and security check are in the card file itself — that file, not this one, is the source of truth for what D005 actually requires. This file only tracks _where we are_, not _what to do_.
+**Next up: [`D006`](../docs/cards/D006.md) — Secret scanning.**
+Full task, deliverable, acceptance criteria, and security check are in the card file itself — that file, not this one, is the source of truth for what D006 actually requires. This file only tracks _where we are_, not _what to do_.
 
 ## Open decisions (blocking, from `docs/design/00_README.md`)
 
@@ -28,7 +28,8 @@ Full task, deliverable, acceptance criteria, and security check are in the card 
 
 ## Carried-over notes for next session
 
-- `docs/implementation_calendar/build_calendar.xlsx` — human-facing dashboard, hyperlinked to `docs/cards/{DAY_ID}.md` / `docs/logs/{DAY_ID}.md`. Run `python3 scripts/sync_calendar_xlsx.py` after closing out a card to push Status/Notes without touching its hyperlinks — **still not run for D001–D004; run it at the start of the D005 session** (or now, if resuming this one).
+- `docs/implementation_calendar/build_calendar.xlsx` — human-facing dashboard, hyperlinked to `docs/cards/{DAY_ID}.md` / `docs/logs/{DAY_ID}.md`. Run `python3 scripts/sync_calendar_xlsx.py` after closing out a card to push Status/Notes without touching its hyperlinks — **run at the end of the D005 session (below); confirm it also picked up D001–D004 if it hadn't been run before**.
+- D005's CI workflow (`.github/workflows/ci.yml`) has never actually executed inside GitHub Actions — this sandboxed session has no remote push access, so "pipeline green" was verified by running the workflow's exact command sequence locally, not by a real Actions run. **First push/PR against this repo should confirm the Actions run is genuinely green in the GitHub UI.**
 - `pnpm` (12.3.4, via the system's node/corepack toolchain) and `turbo` are working; `pnpm-workspace.yaml` has an `allowBuilds: { esbuild: true }` entry approving vitest's transitive esbuild postinstall script — expect similar prompts (`pnpm approve-builds`) for other future transitive deps with install scripts.
 - Root scaffolding uses scope `@smb-os/*` for internal packages (`@smb-os/domain`, `@smb-os/db`, `@smb-os/contracts`, `@smb-os/config`, `@smb-os/api`, `@smb-os/web`), plus a new tooling-only package `@smb-os/eslint-config` added in D003 (not part of the runtime dependency graph, just shared lint config).
 - `test:isolation` is still a stub `echo` script in every package — that's correct for now (D004 was Vitest coverage thresholds only, not the isolation suite); it becomes real once Phase 1 introduces `packages/db` repositories to isolate-test. `lint` is real everywhere (D003): flat ESLint 10 config from `@smb-os/eslint-config`, including a custom `local/no-raw-sql` rule (error everywhere except `packages/db`) and, as of D004, a `coverage/**` ignore so packages running `vitest --coverage` don't trip lint on their generated HTML report. `packages/domain` (D004) is the only package with an enforced coverage threshold so far — `vitest.config.ts` there gates lines/statements/functions/branches at 95%, verified to actually fail the build below threshold, not just configured.
@@ -41,3 +42,4 @@ Full task, deliverable, acceptance criteria, and security check are in the card 
 - [D002](logs/D002.md) — TypeScript strict configuration. Confirmed `pnpm typecheck` already green off D001's `strict: true` base config, then locked that guarantee in with a Vitest regression test (`packages/config/test/strict-config.test.ts`) that type-checks fixtures against the real shared tsconfig and would fail if strictness were ever weakened. Done.
 - [D003](logs/D003.md) — Lint and format rules. New `@smb-os/eslint-config` package with a flat ESLint 10 config and a custom `local/no-raw-sql` rule (error outside `packages/db`, off inside it), plus root Prettier config. Verified against a deliberate raw-SQL fixture in `apps/api` (lint failed as required, then reverted). Done.
 - [D004](logs/D004.md) — Test harness. Wired `@vitest/coverage-v8` into `packages/domain` with a 95% threshold on lines/statements/functions/branches per `docs/design/10`. Verified the gate actually fails below threshold (added an under-tested function, confirmed a non-zero exit at ~44% coverage, then covered it back to 100%). Also fixed a shared-config lint gap (`coverage/**` wasn't ignored). Done.
+- [D005](logs/D005.md) — CI pipeline skeleton. Added `.github/workflows/ci.yml` (frozen-lockfile install → lint → typecheck → test → test:isolation on every PR and push to `main`), test-first via `packages/config/test/ci-workflow.test.ts`. Verified green by running the workflow's exact command sequence locally (no remote push access in this session, so no live Actions run yet — flagged for first real push). Done.
