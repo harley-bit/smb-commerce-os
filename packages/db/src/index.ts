@@ -45,3 +45,18 @@ export {
   type UpdateListingInput,
 } from "./repositories/ListingRepository.js";
 export { ListingService } from "./services/ListingService.js";
+export {
+  AuditLogRepository,
+  type AuditActorType,
+  type AuditLogEntry,
+  type AppendAuditLogInput,
+} from "./repositories/AuditLogRepository.js";
+export {
+  AUDIT_LOG_GENESIS_HASH,
+  computeRowHash,
+  type AuditLogRowForHash,
+} from "./audit/hashChain.js";
+export {
+  verifyAuditChain,
+  type AuditChainVerificationResult,
+} from "./audit/verifyChain.js";

@@ -64,6 +64,13 @@
       "when": 1788873639693,
       "tag": "0008_watery_betty_brant",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1788874057885,
+      "tag": "0009_known_gabe_jones",
+      "breakpoints": true
     }
   ]
 }

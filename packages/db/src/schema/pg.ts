@@ -587,6 +587,43 @@ export const conditionMedia = pgTable("condition_media", {
  * `archivedAt` column. `resolved_at`/`resolution_note` are nullable —
  * populated once `state` reaches one of the `RESOLVED_*`/`DISPUTED` states.
  */
+/**
+ * `docs/design/03` "Audit". Append-only — no code path in this package
+ * updates or deletes a row here; `AuditLogRepository` exposes only
+ * `append`/`list`. `prev_hash`/`row_hash` are the hash chain: each row's
+ * `row_hash = SHA256(prev_hash || canonical_json(row_without_hashes))`
+ * (`../audit/hashChain.ts`), so a silently edited row no longer matches
+ * its own `row_hash`, and a fixed-up `row_hash` no longer matches the
+ * next row's `prev_hash` — tampering is *detectable*, not merely harder,
+ * per `docs/design/07`'s security rationale.
+ */
+export const auditLog = pgTable("audit_log", {
+  id: uuid("id").primaryKey(),
+  merchantId: uuid("merchant_id")
+    .notNull()
+    .references(() => merchants.id),
+  /**
+   * Per-merchant monotonic append order. UUIDv7's timestamp prefix is only
+   * millisecond-resolution, so two rows appended for the same merchant in
+   * the same millisecond can sort out of insertion order by `id` alone —
+   * `seq` (assigned by `AuditLogRepository.append` as `previous.seq + 1`)
+   * is what `list`/the verifier actually order and chain by.
+   */
+  seq: integer("seq").notNull(),
+  actorType: text("actor_type", { enum: ["USER", "SYSTEM", "PLATFORM"] }).notNull(),
+  actorId: text("actor_id").notNull(),
+  action: text("action").notNull(),
+  entityType: text("entity_type").notNull(),
+  entityId: text("entity_id").notNull(),
+  beforeJson: text("before_json"),
+  afterJson: text("after_json"),
+  ip: text("ip"),
+  userAgent: text("user_agent"),
+  occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
+  prevHash: text("prev_hash").notNull(),
+  rowHash: text("row_hash").notNull(),
+});
+
 export const damageClaims = pgTable("damage_claims", {
   id: uuid("id").primaryKey(),
   merchantId: uuid("merchant_id")
