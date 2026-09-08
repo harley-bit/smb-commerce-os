@@ -1,7 +1,7 @@
 # SMB Commerce OS — Technical Development Plan
 
 **Plan date:** September 7, 2026
-**Status:** planning only. No code is written until the stack ADR (`02`) is ratified and Phase 0 begins.
+**Status:** ADR-001 ratified, D1/D3/D4 resolved (see `docs/BUILD_STATE.md` for current status — that file, not this one, is authoritative on what's actually decided and where the build currently stands). Phase 0 has not yet started executing cards.
 **Objective:** a security-first, buildable path from empty repository to a pilot-ready MVP, expressed as dated daily work.
 
 ## What this program is
@@ -43,7 +43,10 @@ The business context — market, pricing, geography, monetization — lives else
 11. `11_environments_and_aws_target_architecture.md` — local, staging, production
 12. `12_daily_build_protocol.md` — the repeatable daily loop
 13. `13_weekly_review_protocol.md` — the weekly review agenda and template
-14. `implementation_calendar/build_calendar.xlsx` — dated day-by-day plan, weekly review log, phase summary
+14. `implementation_calendar/build_calendar.xlsx` — dated day-by-day plan, weekly review log, phase summary (see `../implementation_calendar/build_calendar.xlsx` — human-facing dashboard; `../BUILD_CALENDAR.md` is the version Claude reads/writes)
+
+**Reference (superseded in parts, kept for its diagrams)**
+15. `15_legacy_application_flow_diagrams.md` — pre-technical-plan flow sketches, moved here from the business-planning folder; read its banner before using anything but the diagrams themselves
 
 ## How to use this
 
@@ -52,14 +55,14 @@ The business context — market, pricing, geography, monetization — lives else
 3. **Run the daily loop** (`12`). One card per day, with acceptance criteria and a security check. Update the row.
 4. **Run the weekly review** (`13`). Velocity, gates, security findings, scope changes.
 
-## Blocking decisions
+## Blocking decisions — all resolved (see `docs/BUILD_STATE.md` for the live record)
 
-| # | Decision | Owner | Needed by |
-|---|---|---|---|
-| D1 | Ratify ADR-001 stack recommendation | Founder | Before Phase 0 |
-| D2 | Confirm build days per week (drives every date) | Founder | Before Phase 0 |
-| D3 | Confirm whether mobile is in the MVP or post-pilot (`01`) | Founder | Before Phase 8 |
-| D4 | Choose the managed identity provider (`07`) | Founder | Phase 0 |
+| # | Decision | Resolution |
+|---|---|---|
+| D1 | Ratify ADR-001 stack recommendation | **Accepted as proposed** (2026-09-07) |
+| D2 | Confirm build cadence | **Claude executes continuously (token-maxing)**, not a fixed days/week human cadence |
+| D3 | Mobile in MVP or post-pilot | **Deferred to Phase 8**, post-web-MVP |
+| D4 | Identity provider | **Native auth now, Auth0-ready interface, Auth0 wired in later** — see `docs/adr/ADR-002-authentication-provider.md`, which also rewrote card D010 |
 
 ## Principles
 
