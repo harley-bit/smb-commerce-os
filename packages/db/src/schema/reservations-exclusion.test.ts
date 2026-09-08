@@ -12,10 +12,23 @@ import * as pgSchema from "./pg.js";
  * against the connection, with no application code involved at all. That is
  * the scenario these tests exercise: a "console session" that skips
  * `ReservationRepository` entirely.
+ *
+ * `docs/cards/D054.md` narrowed this constraint (migration 0011) to
+ * `subject_type = 'INVENTORY_UNIT'` only — an exclusion constraint can't
+ * express "sum of overlapping quantities <= capacity", so it can no longer
+ * unconditionally guard `RESOURCE` subjects once `capacity > 1` is a real
+ * case; those are guarded by `PgReservationRepository.createGuarded`'s
+ * `SELECT ... FOR UPDATE` path instead (`PgReservationRepository.test.ts`).
+ * The overlap/boundary/non-blocking-state assertions below now exercise
+ * `INVENTORY_UNIT` subjects, the case this constraint still fully owns.
  */
 const merchantId = "018e6b3a-9c3e-7000-8000-0000000000a1";
 const locationId = "018e6b3a-9c3e-7000-8000-0000000000a2";
 const resourceId = "018e6b3a-9c3e-7000-8000-0000000000a3";
+// Polymorphic subject_id — not FK-enforced (`docs/design/03`), so any UUID
+// works; the overlap tests below now target INVENTORY_UNIT (see D054 note
+// above), the case the exclusion constraint still fully owns.
+const inventoryUnitId = "018e6b3a-9c3e-7000-8000-0000000000a4";
 
 async function freshConnection() {
   const connectionString = process.env.DATABASE_URL as string;
@@ -59,11 +72,11 @@ async function rawInsertReservation(
   return connection.pool.query(
     `INSERT INTO reservations
        (id, merchant_id, subject_type, subject_id, starts_at, ends_at, quantity, state, expires_at, created_at)
-     VALUES ($1, $2, 'RESOURCE', $3, $4, $5, 1, $6, $7, now())`,
+     VALUES ($1, $2, 'INVENTORY_UNIT', $3, $4, $5, 1, $6, $7, now())`,
     [
       overrides.id,
       merchantId,
-      resourceId,
+      inventoryUnitId,
       overrides.startsAt,
       overrides.endsAt,
       overrides.state,

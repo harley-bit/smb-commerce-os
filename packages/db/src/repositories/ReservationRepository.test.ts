@@ -325,4 +325,145 @@ describe("ReservationRepository", () => {
       ),
     ).toEqual([]);
   });
+
+  it("createGuarded() admits two adjacent bookings on a capacity-1 resource — ends_at of one equals starts_at of the next (D054)", () => {
+    const ctx = createTenantContext(merchantA);
+
+    const firstId = repo.createGuarded(ctx, {
+      subjectType: "RESOURCE",
+      subjectId: resourceA,
+      startsAt: "2026-10-01T09:00:00.000Z",
+      endsAt: "2026-10-01T10:00:00.000Z",
+      quantity: 1,
+      state: "CONFIRMED",
+      createdAt: "2026-10-01T08:45:00.000Z",
+    });
+    const secondId = repo.createGuarded(ctx, {
+      subjectType: "RESOURCE",
+      subjectId: resourceA,
+      startsAt: "2026-10-01T10:00:00.000Z",
+      endsAt: "2026-10-01T11:00:00.000Z",
+      quantity: 1,
+      state: "CONFIRMED",
+      createdAt: "2026-10-01T08:45:00.000Z",
+    });
+
+    expect(firstId).not.toEqual(secondId);
+    const rows = repo.findBlocking(
+      ctx,
+      "RESOURCE",
+      resourceA,
+      "2026-10-01T09:00:00.000Z",
+      "2026-10-01T11:00:00.000Z",
+      "2026-10-01T08:45:00.000Z",
+    );
+    expect(rows).toHaveLength(2);
+  });
+
+  it("createGuarded() rejects a 1-second overlap on a capacity-1 resource (D054)", () => {
+    const ctx = createTenantContext(merchantA);
+
+    repo.createGuarded(ctx, {
+      subjectType: "RESOURCE",
+      subjectId: resourceA,
+      startsAt: "2026-10-01T09:00:00.000Z",
+      endsAt: "2026-10-01T10:00:00.000Z",
+      quantity: 1,
+      state: "CONFIRMED",
+      createdAt: "2026-10-01T08:45:00.000Z",
+    });
+
+    expect(() =>
+      repo.createGuarded(ctx, {
+        subjectType: "RESOURCE",
+        subjectId: resourceA,
+        startsAt: "2026-10-01T09:59:59.000Z",
+        endsAt: "2026-10-01T10:59:59.000Z",
+        quantity: 1,
+        state: "CONFIRMED",
+        createdAt: "2026-10-01T08:45:00.000Z",
+      }),
+    ).toThrow(ReservationConflictError);
+  });
+
+  it("createGuarded() with capacity=3 admits exactly 3 overlapping bookings and rejects the 4th (D054)", () => {
+    const ctx = createTenantContext(merchantA);
+
+    const ids = [0, 1, 2].map((i) =>
+      repo.createGuarded(
+        ctx,
+        {
+          subjectType: "RESOURCE",
+          subjectId: resourceA,
+          startsAt: "2026-10-01T09:00:00.000Z",
+          endsAt: "2026-10-01T10:00:00.000Z",
+          quantity: 1,
+          state: "CONFIRMED",
+          createdAt: `2026-10-01T08:45:0${i}.000Z`,
+        },
+        3,
+      ),
+    );
+    expect(new Set(ids).size).toBe(3);
+
+    expect(() =>
+      repo.createGuarded(
+        ctx,
+        {
+          subjectType: "RESOURCE",
+          subjectId: resourceA,
+          startsAt: "2026-10-01T09:30:00.000Z",
+          endsAt: "2026-10-01T10:30:00.000Z",
+          quantity: 1,
+          state: "CONFIRMED",
+          createdAt: "2026-10-01T08:45:03.000Z",
+        },
+        3,
+      ),
+    ).toThrow(ReservationConflictError);
+
+    const rows = repo.findBlocking(
+      ctx,
+      "RESOURCE",
+      resourceA,
+      "2026-10-01T09:00:00.000Z",
+      "2026-10-01T10:00:00.000Z",
+      "2026-10-01T08:45:03.000Z",
+    );
+    expect(rows).toHaveLength(3);
+  });
+
+  it("createGuarded() with capacity>1 respects quantity, not just row count — two quantity-2 bookings exceed capacity 3", () => {
+    const ctx = createTenantContext(merchantA);
+
+    repo.createGuarded(
+      ctx,
+      {
+        subjectType: "RESOURCE",
+        subjectId: resourceA,
+        startsAt: "2026-10-01T09:00:00.000Z",
+        endsAt: "2026-10-01T10:00:00.000Z",
+        quantity: 2,
+        state: "CONFIRMED",
+        createdAt: "2026-10-01T08:45:00.000Z",
+      },
+      3,
+    );
+
+    expect(() =>
+      repo.createGuarded(
+        ctx,
+        {
+          subjectType: "RESOURCE",
+          subjectId: resourceA,
+          startsAt: "2026-10-01T09:00:00.000Z",
+          endsAt: "2026-10-01T10:00:00.000Z",
+          quantity: 2,
+          state: "CONFIRMED",
+          createdAt: "2026-10-01T08:45:01.000Z",
+        },
+        3,
+      ),
+    ).toThrow(ReservationConflictError);
+  });
 });

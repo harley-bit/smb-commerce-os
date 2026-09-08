@@ -19,6 +19,11 @@ import * as pgSchema from "../schema/pg.js";
  * succeed — an actual double-booking. The second test proves the harness
  * isn't rigged: with the constraint restored, the identical race yields
  * exactly one winner and the rest fail with PostgreSQL's own `23P01`.
+ *
+ * `docs/cards/D054.md` narrowed the exclusion constraint (migration 0011) to
+ * `INVENTORY_UNIT` subjects only (see `PgReservationRepository.test.ts` for
+ * the equivalent `RESOURCE`/capacity-checked proof) — this file's subject is
+ * switched to `INVENTORY_UNIT` so it keeps proving the constraint itself.
  */
 const merchantId = "018e6b3a-9c3e-7000-8000-0000000000e1";
 const locationId = "018e6b3a-9c3e-7000-8000-0000000000e2";
@@ -79,7 +84,7 @@ async function race(connection: PgConnection): Promise<RaceResult[]> {
         await client.query(
           `INSERT INTO reservations
              (id, merchant_id, subject_type, subject_id, starts_at, ends_at, quantity, state, expires_at, created_at)
-           VALUES ($1, $2, 'RESOURCE', $3, $4, $5, 1, 'CONFIRMED', NULL, now())`,
+           VALUES ($1, $2, 'INVENTORY_UNIT', $3, $4, $5, 1, 'CONFIRMED', NULL, now())`,
           [`018e6b3a-9c3e-7000-8000-0000000001${String(i).padStart(2, "0")}`, merchantId, resourceId, startsAt, endsAt],
         );
         return { ok: true };

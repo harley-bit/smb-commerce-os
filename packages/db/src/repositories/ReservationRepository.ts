@@ -90,8 +90,22 @@ export class ReservationRepository extends TenantScopedRepository<typeof reserva
    * double-book, but it does fail with an opaque, untyped
    * `SQLITE_BUSY_SNAPSHOT` rather than this method's typed, deterministic
    * `ReservationConflictError`.
+   *
+   * `capacity` (`docs/design/05` "Fungible capacity", `docs/cards/D054.md`)
+   * defaults to 1 — a serialized subject (rental `INVENTORY_UNIT`, or a
+   * `RESOURCE` with `capacity: 1`), where any existing blocking reservation
+   * always conflicts, exactly D050's original behavior. For a `RESOURCE`
+   * with `capacity > 1` (a class with several seats), the check instead sums
+   * `quantity` across overlapping blocking reservations and only conflicts
+   * once admitting this request would exceed capacity — `BEGIN IMMEDIATE`
+   * is what makes this sum safe to trust: no other writer's blocking
+   * reservation for this subject can commit between the sum and the insert.
    */
-  createGuarded: RepositoryMethod<[input: CreateReservationInput], string> = (ctx, input) => {
+  createGuarded: RepositoryMethod<[input: CreateReservationInput, capacity?: number], string> = (
+    ctx,
+    input,
+    capacity = 1,
+  ) => {
     const attempt = this.conn.sqlite.transaction((): string => {
       const blocking = this.findBlocking(
         ctx,
@@ -101,7 +115,8 @@ export class ReservationRepository extends TenantScopedRepository<typeof reserva
         input.endsAt,
         input.createdAt,
       );
-      if (blocking.length > 0) {
+      const usedQuantity = blocking.reduce((sum, reservation) => sum + reservation.quantity, 0);
+      if (usedQuantity + input.quantity > capacity) {
         throw new ReservationConflictError(input.subjectType, input.subjectId);
       }
       return this.insertRow(ctx, input);

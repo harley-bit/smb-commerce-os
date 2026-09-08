@@ -11,6 +11,16 @@ import * as pgSchema from "../schema/pg.js";
  * harness — this card raises N to 50 and asserts only the production
  * (constraint-in-place) arm, since D052 already proved the
  * constraint-dropped arm demonstrably races.
+ *
+ * `docs/cards/D054.md` narrowed the exclusion constraint (migration 0011) to
+ * `INVENTORY_UNIT` subjects only — `RESOURCE` subjects (which this file
+ * originally raced) are now guarded by `PgReservationRepository`'s
+ * app-level `SELECT ... FOR UPDATE` path instead, since an exclusion
+ * constraint can't express `capacity > 1`'s sum-of-quantity admission. This
+ * file's subject is switched to `INVENTORY_UNIT` (rental unit, always
+ * serialized) so it keeps proving the exclusion constraint itself races
+ * correctly at N=50; the identical proof for the capacity-checked path is
+ * `PgReservationRepository.test.ts`.
  */
 const merchantId = "018e6b3a-9c3e-7000-8000-0000000000f1";
 const locationId = "018e6b3a-9c3e-7000-8000-0000000000f2";
@@ -68,7 +78,7 @@ async function race(connection: PgConnection): Promise<RaceResult[]> {
         await client.query(
           `INSERT INTO reservations
              (id, merchant_id, subject_type, subject_id, starts_at, ends_at, quantity, state, expires_at, created_at)
-           VALUES ($1, $2, 'RESOURCE', $3, $4, $5, 1, 'CONFIRMED', NULL, now())`,
+           VALUES ($1, $2, 'INVENTORY_UNIT', $3, $4, $5, 1, 'CONFIRMED', NULL, now())`,
           [
             `018e6b3a-9c3e-7000-8000-0000000002${String(i).padStart(2, "0")}`,
             merchantId,

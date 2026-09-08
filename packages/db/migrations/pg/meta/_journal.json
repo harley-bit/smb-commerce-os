@@ -78,6 +78,13 @@
       "when": 1788882644251,
       "tag": "0010_reservations_no_overlap",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1788884559016,
+      "tag": "0011_reservations_exclusion_inventory_unit_only",
+      "breakpoints": true
     }
   ]
 }

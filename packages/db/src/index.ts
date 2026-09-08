@@ -122,3 +122,4 @@ export {
   type ReservationState,
   type CreateReservationInput,
 } from "./repositories/ReservationRepository.js";
+export { PgReservationRepository } from "./repositories/PgReservationRepository.js";
