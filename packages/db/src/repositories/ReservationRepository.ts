@@ -2,6 +2,8 @@ import {
   applyReservationEvent,
   expandIntervalForBuffer,
   generateUuidV7,
+  parseUtcIso,
+  toUtcIso,
   type TenantContext,
 } from "@smb-os/domain";
 import { and, count as sqlCount, desc, eq, gt, lt, or, type SQLWrapper } from "drizzle-orm";
@@ -332,6 +334,24 @@ export class ReservationRepository extends TenantScopedRepository<typeof reserva
       .limit(1)
       .get() as { endsAt: string } | undefined;
     return row?.endsAt ?? null;
+  };
+
+  /**
+   * `docs/cards/D067.md` — invariant I3, "a rented unit cannot be sold". A
+   * point-in-time membership check built on `findBlocking`'s interval-overlap
+   * query: `asOf` is queried as a zero-width instant (`[asOf, asOf + 1ms)`),
+   * so it returns true exactly when some blocking reservation's half-open
+   * interval `[starts_at, ends_at)` contains that instant — the same
+   * blocking-state semantics (`CONFIRMED`/`IN_USE`/unexpired `HELD`) as
+   * every other blocking check in this repository, so an unswept expired
+   * hold still does not count as "currently rented".
+   */
+  isSubjectCurrentlyBlocked: RepositoryMethod<
+    [subjectType: ReservationSubjectType, subjectId: string, asOf: string],
+    boolean
+  > = (ctx, subjectType, subjectId, asOf) => {
+    const instantEnd = toUtcIso(new Date(parseUtcIso(asOf).getTime() + 1));
+    return this.findBlocking(ctx, subjectType, subjectId, asOf, instantEnd, asOf).length > 0;
   };
 
   findBlocking: RepositoryMethod<

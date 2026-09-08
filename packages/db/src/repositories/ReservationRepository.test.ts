@@ -908,4 +908,66 @@ describe("ReservationRepository", () => {
       expect(repo.lastReturnedAt(ctxB, "INVENTORY_UNIT", unitId)).toBe("2026-10-01T10:00:00.000Z");
     });
   });
+
+  describe("isSubjectCurrentlyBlocked() — docs/cards/D067.md, invariant I3", () => {
+    it("returns true when a CONFIRMED reservation covers the given instant", () => {
+      const ctx = createTenantContext(merchantA);
+      const unitId = generateUuidV7();
+
+      repo.create(ctx, {
+        subjectType: "INVENTORY_UNIT",
+        subjectId: unitId,
+        startsAt: "2026-10-01T09:00:00.000Z",
+        endsAt: "2026-10-05T10:00:00.000Z",
+        quantity: 1,
+        state: "CONFIRMED",
+        createdAt: "2026-10-01T08:45:00.000Z",
+      });
+
+      expect(repo.isSubjectCurrentlyBlocked(ctx, "INVENTORY_UNIT", unitId, "2026-10-02T00:00:00.000Z")).toBe(true);
+    });
+
+    it("returns false once the reservation has ended", () => {
+      const ctx = createTenantContext(merchantA);
+      const unitId = generateUuidV7();
+
+      repo.create(ctx, {
+        subjectType: "INVENTORY_UNIT",
+        subjectId: unitId,
+        startsAt: "2026-10-01T09:00:00.000Z",
+        endsAt: "2026-10-05T10:00:00.000Z",
+        quantity: 1,
+        state: "COMPLETED",
+        createdAt: "2026-10-01T08:45:00.000Z",
+      });
+
+      expect(repo.isSubjectCurrentlyBlocked(ctx, "INVENTORY_UNIT", unitId, "2026-10-06T00:00:00.000Z")).toBe(false);
+    });
+
+    it("returns false for a subject with no reservation at all", () => {
+      const ctx = createTenantContext(merchantA);
+      expect(
+        repo.isSubjectCurrentlyBlocked(ctx, "INVENTORY_UNIT", generateUuidV7(), "2026-10-02T00:00:00.000Z"),
+      ).toBe(false);
+    });
+
+    it("is tenant-scoped — merchant B's identical unit id does not block merchant A's sale check", () => {
+      const ctxA = createTenantContext(merchantA);
+      const ctxB = createTenantContext(merchantB);
+      const unitId = generateUuidV7();
+
+      repo.create(ctxB, {
+        subjectType: "INVENTORY_UNIT",
+        subjectId: unitId,
+        startsAt: "2026-10-01T09:00:00.000Z",
+        endsAt: "2026-10-05T10:00:00.000Z",
+        quantity: 1,
+        state: "CONFIRMED",
+        createdAt: "2026-10-01T08:45:00.000Z",
+      });
+
+      expect(repo.isSubjectCurrentlyBlocked(ctxA, "INVENTORY_UNIT", unitId, "2026-10-02T00:00:00.000Z")).toBe(false);
+      expect(repo.isSubjectCurrentlyBlocked(ctxB, "INVENTORY_UNIT", unitId, "2026-10-02T00:00:00.000Z")).toBe(true);
+    });
+  });
 });

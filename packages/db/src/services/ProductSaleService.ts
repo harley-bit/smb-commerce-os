@@ -2,8 +2,21 @@ import { assertCan, type TenantContext } from "@smb-os/domain";
 import type { MerchantUserRole } from "../repositories/MerchantUserRepository.js";
 import type { AuditLogRepository } from "../repositories/AuditLogRepository.js";
 import type { InventoryMovementRepository } from "../repositories/InventoryMovementRepository.js";
+import type { ReservationRepository } from "../repositories/ReservationRepository.js";
 import type { VariantRepository } from "../repositories/VariantRepository.js";
 import type { InventoryUnitService } from "./InventoryUnitService.js";
+
+/**
+ * `docs/cards/D067.md` — invariant I3. Thrown when the caller tries to sell
+ * a serialized unit that currently has a blocking reservation (rented out
+ * right now) covering the sale's `occurredAt` instant.
+ */
+export class UnitCurrentlyRentedError extends Error {
+  constructor(public readonly unitId: string) {
+    super(`Cannot sell unit ${unitId}: it is currently rented`);
+    this.name = "UnitCurrentlyRentedError";
+  }
+}
 
 export interface SellProductInput {
   variantId: string;
@@ -39,6 +52,7 @@ export class ProductSaleService {
     private readonly movementRepo: InventoryMovementRepository,
     private readonly unitService: InventoryUnitService,
     private readonly auditLogRepo: AuditLogRepository,
+    private readonly reservationRepo: ReservationRepository,
   ) {}
 
   sellProduct(ctx: TenantContext, actingRole: MerchantUserRole, input: SellProductInput): SellProductResult {
@@ -54,6 +68,13 @@ export class ProductSaleService {
     }
     if (variant.mode !== "PRODUCT") {
       throw new Error(`Cannot sell variant ${input.variantId}: mode is ${variant.mode}, not PRODUCT`);
+    }
+
+    if (
+      input.unitId &&
+      this.reservationRepo.isSubjectCurrentlyBlocked(ctx, "INVENTORY_UNIT", input.unitId, input.occurredAt)
+    ) {
+      throw new UnitCurrentlyRentedError(input.unitId);
     }
 
     const unitPriceMinor = variant.priceMinor;

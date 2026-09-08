@@ -9,6 +9,7 @@ import { VariantRepository } from "../repositories/VariantRepository.js";
 import { InventoryUnitRepository } from "../repositories/InventoryUnitRepository.js";
 import { InventoryMovementRepository, InsufficientStockError } from "../repositories/InventoryMovementRepository.js";
 import { AuditLogRepository } from "../repositories/AuditLogRepository.js";
+import { ReservationRepository } from "../repositories/ReservationRepository.js";
 import { verifyAuditChain } from "../audit/verifyChain.js";
 import { ListingService } from "./ListingService.js";
 import { ProductListingService } from "./ProductListingService.js";
@@ -53,7 +54,8 @@ describe("Gate G2 — product purchase E2E", () => {
     variantService = new VariantService(variantRepo);
     inventoryService = new InventoryService(movementRepo, auditLogRepo);
     const unitService = new InventoryUnitService(unitRepo, auditLogRepo);
-    saleService = new ProductSaleService(variantRepo, movementRepo, unitService, auditLogRepo);
+    const reservationRepo = new ReservationRepository(connection);
+    saleService = new ProductSaleService(variantRepo, movementRepo, unitService, auditLogRepo, reservationRepo);
 
     merchantA = generateUuidV7();
     staffUserId = generateUuidV7();

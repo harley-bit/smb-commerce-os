@@ -85,6 +85,7 @@ export {
 } from "./services/InventoryUnitService.js";
 export {
   ProductSaleService,
+  UnitCurrentlyRentedError,
   type SellProductInput,
   type SellProductResult,
 } from "./services/ProductSaleService.js";

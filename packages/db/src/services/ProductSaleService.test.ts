@@ -10,8 +10,9 @@ import { VariantRepository } from "../repositories/VariantRepository.js";
 import { InventoryUnitRepository } from "../repositories/InventoryUnitRepository.js";
 import { InventoryMovementRepository, InsufficientStockError } from "../repositories/InventoryMovementRepository.js";
 import { AuditLogRepository } from "../repositories/AuditLogRepository.js";
+import { ReservationRepository } from "../repositories/ReservationRepository.js";
 import { InventoryUnitService } from "./InventoryUnitService.js";
-import { ProductSaleService } from "./ProductSaleService.js";
+import { ProductSaleService, UnitCurrentlyRentedError } from "./ProductSaleService.js";
 
 describe("ProductSaleService", () => {
   let connection: Connection;
@@ -19,6 +20,7 @@ describe("ProductSaleService", () => {
   let unitRepo: InventoryUnitRepository;
   let variantRepo: VariantRepository;
   let auditLogRepo: AuditLogRepository;
+  let reservationRepo: ReservationRepository;
   let service: ProductSaleService;
   let merchantA: string;
   let variantA: string;
@@ -36,8 +38,9 @@ describe("ProductSaleService", () => {
     unitRepo = new InventoryUnitRepository(connection);
     movementRepo = new InventoryMovementRepository(connection);
     auditLogRepo = new AuditLogRepository(connection);
+    reservationRepo = new ReservationRepository(connection);
     const unitService = new InventoryUnitService(unitRepo, auditLogRepo);
-    service = new ProductSaleService(variantRepo, movementRepo, unitService, auditLogRepo);
+    service = new ProductSaleService(variantRepo, movementRepo, unitService, auditLogRepo, reservationRepo);
 
     merchantA = generateUuidV7();
     userId = generateUuidV7();
@@ -183,6 +186,41 @@ describe("ProductSaleService", () => {
     });
 
     expect(unitRepo.findById(ctx, unitId)).toMatchObject({ status: "SOLD" });
+  });
+
+  it("rejects selling a unit that is currently rented (invariant I3, D067)", () => {
+    const ctx = createTenantContext(merchantA);
+    receiveStock(ctx, 1);
+    const unitId = unitRepo.create(ctx, {
+      variantId: variantA,
+      locationId: locationA,
+      unitCode: "SN-002",
+      trackingMode: "SERIALIZED",
+    });
+    reservationRepo.create(ctx, {
+      subjectType: "INVENTORY_UNIT",
+      subjectId: unitId,
+      startsAt: "2026-09-01T00:00:00.000Z",
+      endsAt: "2026-09-15T00:00:00.000Z",
+      quantity: 1,
+      state: "CONFIRMED",
+      createdAt: "2026-08-31T00:00:00.000Z",
+    });
+
+    expect(() =>
+      service.sellProduct(ctx, "ADMIN", {
+        variantId: variantA,
+        unitId,
+        locationId: locationA,
+        quantity: 1,
+        actorUserId: userId,
+        occurredAt: "2026-09-08T01:00:00.000Z",
+        note: "Sold at register",
+      }),
+    ).toThrow(UnitCurrentlyRentedError);
+
+    expect(movementRepo.sumStock(ctx, variantA, locationA)).toBe(1);
+    expect(unitRepo.findById(ctx, unitId)).toMatchObject({ status: "AVAILABLE" });
   });
 
   it("rejects a sale for a non-PRODUCT variant", () => {
