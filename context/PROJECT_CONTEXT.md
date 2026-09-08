@@ -1,6 +1,6 @@
 # SMB Commerce OS (code repo) — Project Context Snapshot
 
-**Snapshot date:** 2026-09-07
+**Snapshot date:** 2026-09-08 (updated — build execution underway, automated loop added, Phase 11 scoped)
 **Purpose of this file:** re-orient quickly on this repo's current state without re-reading every design doc, card, and commit. For the live, authoritative build status, always defer to `docs/BUILD_STATE.md` — this file is a slower-moving overview, that one is the source of truth on exactly where execution stands right now.
 
 ---
@@ -17,9 +17,11 @@ This repo is deliberately separated from the business-planning material, which l
 
 **WHERE** is enforced practically: `.claude/settings.json` pre-approves ordinary build/test/git operations scoped to this repo directory (pnpm/npm/node, local git read/write, file Edit/Write/Read under this path) so the loop doesn't stall on interactive approval — with an explicit deny list for anything remote, destructive, or privilege-escalating (git push/pull/fetch/remote, reset --hard, clean, rebase, branch delete, sudo, broad rm -rf). This is a scoped allowlist, not a permissions bypass.
 
-## Scope — full, no cuts
+## Scope — full, no cuts, plus one addition
 
 Products + services + rentals, single unified catalog, single vertical/geography assumption inherited from the business plan (local service SMEs, not yet re-confirmed against the rentals-inclusive technical scope). Mobile is Phase 8, after the web MVP gate (G7) — deferred by decision, doesn't block G7. No discovery/marketplace search, ratings/reviews, valuation engine, or token/CRM layer in this build — see `docs/design/01_phasing_and_mvp_definition.md` for the full in/out table.
+
+**Phase 11 — Platform admin console (added 2026-09-08).** The original coworker plan never scoped a platform-staff/power-user surface — `07`'s `PLATFORM_ADMIN` role existed on paper with no UI behind it. Founder requested it be scoped as a **full internal ops console**, not just read-only support tooling: tiered platform roles (`PLATFORM_SUPPORT` < `PLATFORM_ADMIN` < `PLATFORM_SUPERADMIN`, a separate axis from merchant roles), a separate `apps/admin` app (blast-radius isolation + network restriction, not a route inside the merchant dashboard), break-glass merchant access (reason-required, time-boxed grants, no standing access ever), support actions, merchant lifecycle management, platform-wide reporting, feature flags, and platform staff role management. Full design: `docs/design/16_platform_admin_console.md`. Placed as `D177`–`D197` (Gate G11) **after** Phase 10 specifically so it didn't renumber any already-built card. Total build now 197 cards, not 176.
 
 ## The four blocking decisions — all resolved
 
@@ -45,11 +47,19 @@ Three files work together for every unit of work, plus a human dashboard:
 - **`docs/logs/{DAY_ID}.md`** — written after a card actually runs, from `docs/logs/TEMPLATE.md`, linking back to its card and calendar row.
 - **`docs/implementation_calendar/build_calendar.xlsx`** — human-facing dashboard mirroring the same 176 rows, with real clickable hyperlinks (columns M/N) to each card and log file. Kept in sync via `scripts/sync_calendar_xlsx.py` (pushes Status/Notes/Duration from the markdown calendar — never hand-edit the xlsx's Status column, it'll be overwritten).
 
-**Per-card duration estimates** are a heuristic (base hours per phase, weighted up for concurrency/deposit/payment/gate-review complexity) — an AI-assisted-session planning figure, not a human-day estimate or a commitment. Sum across all 176 cards: ~473.5 hours. Same rule as the projected MVP gate date: recalibrate against real `docs/logs/` actual-effort data once cards start closing, don't defend the original number.
+**Per-card duration estimates** are a heuristic (base hours per phase, weighted up for concurrency/deposit/payment/gate-review complexity) — an AI-assisted-session planning figure, not a human-day estimate or a commitment. Sum across all 197 cards: ~519 hours (~473.5h original + ~45.5h for Phase 11). Same rule as the projected MVP gate date: recalibrate against real `docs/logs/` actual-effort data once cards start closing, don't defend the original number.
+
+## Execution is live — the build loop runs itself
+
+This is no longer a "ready to run whenever" plan — it is actually executing, unattended, on a schedule:
+
+- **`scripts/run_build_loop.py`** invokes `claude -p` on the current card, verifies `BUILD_STATE.md`'s current-card pointer actually advanced afterward, and stops cleanly (distinct exit codes) on a usage-limit signal, a stalled/Carried card, or an unclean working tree — it never guesses past a problem.
+- **A macOS LaunchAgent** (`~/Library/LaunchAgents/com.smbcos.buildloop.plist`) fires this on a schedule (currently hourly), opening a visible Terminal window via `scripts/open_build_loop_terminal.sh` only when there's real work to do (lock + dry-run pre-check gates it). Each firing runs up to **6 cards** (`--max-cards 6`) before stopping, one fully closed out before the next starts. Manage it with `launchctl print/bootout/bootstrap gui/$(id -u)/com.smbcos.buildloop`; full docs in `scripts/BUILD_LOOP.md`.
+- Two real headless-execution bugs were found and fixed getting this working: the workspace needed `hasTrustDialogAccepted: true` in `~/.claude.json` for `.claude/settings.json`'s allowlist to apply at all in non-interactive runs, and `-p` mode needed an explicit `--permission-mode auto` or it silently falls back to an interactive approval it can never get. `claude -p`'s output is also routed through `script -q` (pseudo-tty allocation) so it streams live instead of buffering until exit.
 
 ## Current status
 
-**Phase 0 (Foundations and security baseline) has not started executing.** This repo currently contains only documentation/planning scaffolding — no application code, no `pnpm` workspace initialized yet. **Next card: `D001` — Initialize monorepo** (`docs/cards/D001.md`). No blocking decisions remain; D001 is ready to run whenever the founder says go.
+**Phase 0 (Foundations and security baseline) is underway, running via the automated loop.** `D001`–`D003` are Done (monorepo init, strict TypeScript regression test, ESLint/Prettier + a custom raw-SQL-ban lint rule); `D004` (test harness — Vitest coverage thresholds) is in flight as of this snapshot. No blocking decisions remain. Don't trust a specific Day ID in this file as current for long — check `docs/BUILD_STATE.md` or run `python3 scripts/run_build_loop.py --dry-run`.
 
 ## Files and folders at a glance
 
@@ -57,13 +67,17 @@ Three files work together for every unit of work, plus a human dashboard:
 |---|---|
 | `CLAUDE.md` | Working rules for every session: context boundary, calendar/card/log convention, token-maxing execution model, non-negotiable gates (tenant isolation, no double-booking) |
 | `docs/BUILD_STATE.md` | The live tracker — current phase, current card, decision log, carried-over notes. **Read this first, every session.** |
-| `docs/BUILD_CALENDAR.md` | The 176-day master sequence Claude reads/writes |
+| `docs/BUILD_CALENDAR.md` | The 197-day master sequence Claude reads/writes |
 | `docs/cards/`, `docs/logs/` | Per-day prompts and per-day run logs |
 | `docs/implementation_calendar/build_calendar.xlsx` | Human dashboard mirror with clickable links |
 | `docs/design/00`–`14` | The original technical plan: phasing, ADR-001, domain model, portability, concurrency, API contracts, security/threat model, privacy, compliance mapping, CI/CD, environments, daily/weekly protocols, risk register |
 | `docs/design/15_legacy_application_flow_diagrams.md` | Pre-technical-plan flow sketches, moved in from the business-planning folder; superseded in parts (see its banner) |
+| `docs/design/16_platform_admin_console.md` | Phase 11 — platform admin/power-user console (added 2026-09-08) |
 | `docs/adr/ADR-002-authentication-provider.md` | The native-auth-now, Auth0-later decision and its real security requirements |
-| `.claude/settings.json` | Project-scoped permission allowlist for the build loop |
+| `.claude/settings.json` | Project-scoped permission allowlist for the build loop (`Edit(path)` rules only — `Write(path)` rules are silently ignored by permission checks) |
+| `scripts/run_build_loop.py` | The automated driver — invokes `claude -p` per card, verifies real progress, stops cleanly on a problem |
+| `scripts/open_build_loop_terminal.sh`, `~/Library/LaunchAgents/com.smbcos.buildloop.plist` | The scheduling layer — opens a visible Terminal window on an hourly timer, only when there's work to do |
+| `scripts/BUILD_LOOP.md` | Full docs for the loop: exit codes, launchd management, the TCC/trust/permission-mode gotchas already solved |
 | `scripts/sync_calendar_xlsx.py` | Pushes Status/Notes/Duration from the markdown calendar into the xlsx dashboard |
 
 ## What deliberately isn't in this repo
