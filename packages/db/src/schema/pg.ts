@@ -153,14 +153,15 @@ export const listingVariants = pgTable(
     durationMinutes: integer("duration_minutes"),
     ratePeriod: text("rate_period", { enum: ["HOUR", "DAY", "WEEK"] }),
     depositMinor: integer("deposit_minor"),
+    bufferMinutes: integer("buffer_minutes"),
     archivedAt: timestamp("archived_at", { withTimezone: true }),
   },
   (table) => [
     check(
       "listing_variants_mode_fields_check",
       sql`(
-        (${table.mode} = 'PRODUCT' AND ${table.durationMinutes} IS NULL AND ${table.ratePeriod} IS NULL AND ${table.depositMinor} IS NULL)
-        OR (${table.mode} = 'SERVICE' AND ${table.ratePeriod} IS NULL AND ${table.depositMinor} IS NULL)
+        (${table.mode} = 'PRODUCT' AND ${table.durationMinutes} IS NULL AND ${table.ratePeriod} IS NULL AND ${table.depositMinor} IS NULL AND ${table.bufferMinutes} IS NULL)
+        OR (${table.mode} = 'SERVICE' AND ${table.ratePeriod} IS NULL AND ${table.depositMinor} IS NULL AND ${table.bufferMinutes} IS NULL)
         OR (${table.mode} = 'RENTAL' AND ${table.durationMinutes} IS NULL)
       )`,
     ),

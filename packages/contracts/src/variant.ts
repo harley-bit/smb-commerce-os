@@ -10,18 +10,18 @@ export type VariantRatePeriod = z.infer<typeof variantRatePeriodSchema>;
 
 /**
  * `packages/db/src/schema/sqlite.ts`'s `listing_variants_mode_fields_check`
- * (`D022`) and `packages/db/src/services/VariantService.ts`'s
- * `FORBIDDEN_FIELDS_BY_MODE` (`D033`) both encode this same rule —
- * `durationMinutes` is services-only, `ratePeriod`/`depositMinor` are
- * rentals-only. Exported here as the one definition this package's own
- * create/update schemas validate against; a future card wiring
+ * (`D022`/`D063`) and `packages/db/src/services/VariantService.ts`'s
+ * `FORBIDDEN_FIELDS_BY_MODE` (`D033`/`D063`) both encode this same rule —
+ * `durationMinutes` is services-only, `ratePeriod`/`depositMinor`/
+ * `bufferMinutes` are rentals-only. Exported here as the one definition this
+ * package's own create/update schemas validate against; a future card wiring
  * `VariantService` to import this instead of re-declaring its own copy
  * would remove that last duplicate (tracked, not done in this card — see
  * `docs/logs/D034.md`).
  */
 export const FORBIDDEN_VARIANT_FIELDS_BY_MODE: Record<VariantMode, readonly string[]> = {
-  PRODUCT: ["durationMinutes", "ratePeriod", "depositMinor"],
-  SERVICE: ["ratePeriod", "depositMinor"],
+  PRODUCT: ["durationMinutes", "ratePeriod", "depositMinor", "bufferMinutes"],
+  SERVICE: ["ratePeriod", "depositMinor", "bufferMinutes"],
   RENTAL: ["durationMinutes"],
 };
 
@@ -84,6 +84,7 @@ export const variantSchema = z.object({
   durationMinutes: z.number().nullable(),
   ratePeriod: variantRatePeriodSchema.nullable(),
   depositMinor: z.number().nullable(),
+  bufferMinutes: z.number().nullable(),
   archivedAt: z.string().nullable(),
 });
 export type Variant = z.infer<typeof variantSchema>;
@@ -105,6 +106,7 @@ export const createVariantInputSchema = z
     durationMinutes: z.number().optional(),
     ratePeriod: variantRatePeriodSchema.optional(),
     depositMinor: z.number().optional(),
+    bufferMinutes: z.number().optional(),
   })
   .superRefine((input, ctx) => {
     assertValidMoney(input.priceMinor, input.currency, ctx, ["priceMinor"]);
@@ -130,6 +132,7 @@ export const updateVariantInputSchema = z
     durationMinutes: z.number().optional(),
     ratePeriod: variantRatePeriodSchema.optional(),
     depositMinor: z.number().optional(),
+    bufferMinutes: z.number().optional(),
   })
   .strict()
   .superRefine((input, ctx) => {

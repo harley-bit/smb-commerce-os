@@ -18,6 +18,7 @@ const baseVariant = {
   durationMinutes: null,
   ratePeriod: null,
   depositMinor: null,
+  bufferMinutes: null,
   archivedAt: null,
 };
 
@@ -121,7 +122,7 @@ describe("createVariantInputSchema — price is validated through the shared Mon
     expect(createVariantInputSchema.parse(input)).toEqual(input);
   });
 
-  it("accepts a RENTAL variant with ratePeriod and depositMinor", () => {
+  it("accepts a RENTAL variant with ratePeriod, depositMinor, and bufferMinutes", () => {
     const input = {
       listingId: baseVariant.listingId,
       mode: "RENTAL" as const,
@@ -131,8 +132,37 @@ describe("createVariantInputSchema — price is validated through the shared Mon
       currency: "USD",
       ratePeriod: "DAY" as const,
       depositMinor: 2000,
+      bufferMinutes: 30,
     };
     expect(createVariantInputSchema.parse(input)).toEqual(input);
+  });
+
+  it("rejects a PRODUCT variant carrying bufferMinutes", () => {
+    expect(() =>
+      createVariantInputSchema.parse({
+        listingId: baseVariant.listingId,
+        mode: "PRODUCT",
+        sku: "SKU-1",
+        name: "Small",
+        priceMinor: 500,
+        currency: "USD",
+        bufferMinutes: 15,
+      }),
+    ).toThrow();
+  });
+
+  it("rejects a SERVICE variant carrying bufferMinutes", () => {
+    expect(() =>
+      createVariantInputSchema.parse({
+        listingId: baseVariant.listingId,
+        mode: "SERVICE",
+        sku: "SKU-2",
+        name: "Consult",
+        priceMinor: 500,
+        currency: "USD",
+        bufferMinutes: 15,
+      }),
+    ).toThrow();
   });
 });
 

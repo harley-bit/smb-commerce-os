@@ -127,8 +127,11 @@ export const listings = sqliteTable(
  * `docs/design/03` "Catalog". `mode` is denormalized from the parent
  * `listings` row (copied at write time, same rationale as `order_lines.mode`)
  * so the mode-specific-field CHECK below can be enforced locally without a
- * cross-table lookup. `duration_minutes` is services-only; `rate_period` and
- * `deposit_minor` are rentals-only.
+ * cross-table lookup. `duration_minutes` is services-only; `rate_period`,
+ * `deposit_minor`, and `buffer_minutes` are rentals-only. `buffer_minutes`
+ * is the turnaround gap (cleaning/inspection/charging) applied by expanding
+ * a reservation's effective interval at write time (`docs/design/05`), not
+ * by complicating the overlap predicate itself.
  */
 export const listingVariants = sqliteTable(
   "listing_variants",
@@ -149,14 +152,15 @@ export const listingVariants = sqliteTable(
     durationMinutes: integer("duration_minutes"),
     ratePeriod: text("rate_period", { enum: ["HOUR", "DAY", "WEEK"] }),
     depositMinor: integer("deposit_minor"),
+    bufferMinutes: integer("buffer_minutes"),
     archivedAt: text("archived_at"),
   },
   (table) => [
     check(
       "listing_variants_mode_fields_check",
       sql`(
-        (${table.mode} = 'PRODUCT' AND ${table.durationMinutes} IS NULL AND ${table.ratePeriod} IS NULL AND ${table.depositMinor} IS NULL)
-        OR (${table.mode} = 'SERVICE' AND ${table.ratePeriod} IS NULL AND ${table.depositMinor} IS NULL)
+        (${table.mode} = 'PRODUCT' AND ${table.durationMinutes} IS NULL AND ${table.ratePeriod} IS NULL AND ${table.depositMinor} IS NULL AND ${table.bufferMinutes} IS NULL)
+        OR (${table.mode} = 'SERVICE' AND ${table.ratePeriod} IS NULL AND ${table.depositMinor} IS NULL AND ${table.bufferMinutes} IS NULL)
         OR (${table.mode} = 'RENTAL' AND ${table.durationMinutes} IS NULL)
       )`,
     ),

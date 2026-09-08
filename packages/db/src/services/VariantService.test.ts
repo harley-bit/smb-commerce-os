@@ -90,7 +90,7 @@ describe("VariantService", () => {
     expect(service.findById(ctx, id)).toMatchObject({ mode: "SERVICE", durationMinutes: 30 });
   });
 
-  it("creates a RENTAL variant carrying ratePeriod and depositMinor", () => {
+  it("creates a RENTAL variant carrying ratePeriod, depositMinor, and bufferMinutes", () => {
     const ctx = createTenantContext(merchantA);
 
     const id = service.create(ctx, "OWNER", {
@@ -102,16 +102,18 @@ describe("VariantService", () => {
       currency: "USD",
       ratePeriod: "DAY",
       depositMinor: 10000,
+      bufferMinutes: 30,
     });
 
     expect(service.findById(ctx, id)).toMatchObject({
       mode: "RENTAL",
       ratePeriod: "DAY",
       depositMinor: 10000,
+      bufferMinutes: 30,
     });
   });
 
-  it.each(["durationMinutes", "ratePeriod", "depositMinor"])(
+  it.each(["durationMinutes", "ratePeriod", "depositMinor", "bufferMinutes"])(
     "rejects a PRODUCT variant carrying the service/rental-only field %s",
     (forbiddenKey) => {
       const ctx = createTenantContext(merchantA);
@@ -132,7 +134,7 @@ describe("VariantService", () => {
     },
   );
 
-  it.each(["ratePeriod", "depositMinor"])(
+  it.each(["ratePeriod", "depositMinor", "bufferMinutes"])(
     "rejects a SERVICE variant carrying the rental-only field %s",
     (forbiddenKey) => {
       const ctx = createTenantContext(merchantA);

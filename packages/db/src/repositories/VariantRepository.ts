@@ -20,6 +20,7 @@ export interface Variant {
   durationMinutes: number | null;
   ratePeriod: VariantRatePeriod | null;
   depositMinor: number | null;
+  bufferMinutes: number | null;
   archivedAt: string | null;
 }
 
@@ -34,6 +35,7 @@ export interface CreateVariantInput {
   durationMinutes?: number;
   ratePeriod?: VariantRatePeriod;
   depositMinor?: number;
+  bufferMinutes?: number;
 }
 
 /**
@@ -50,6 +52,7 @@ export interface UpdateVariantInput {
   durationMinutes?: number;
   ratePeriod?: VariantRatePeriod;
   depositMinor?: number;
+  bufferMinutes?: number;
 }
 
 /**

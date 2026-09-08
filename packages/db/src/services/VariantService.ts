@@ -12,14 +12,14 @@ import type {
 export type { CreateVariantInput };
 
 /**
- * `docs/design/03`'s `listing_variants_mode_fields_check` (`D022`), mirrored
- * here so a caller gets a clear application error before the write ever
- * reaches the DB CHECK constraint: `durationMinutes` is services-only,
- * `ratePeriod`/`depositMinor` are rentals-only.
+ * `docs/design/03`'s `listing_variants_mode_fields_check` (`D022`/`D063`),
+ * mirrored here so a caller gets a clear application error before the write
+ * ever reaches the DB CHECK constraint: `durationMinutes` is services-only,
+ * `ratePeriod`/`depositMinor`/`bufferMinutes` are rentals-only.
  */
 const FORBIDDEN_FIELDS_BY_MODE: Record<VariantMode, readonly string[]> = {
-  PRODUCT: ["durationMinutes", "ratePeriod", "depositMinor"],
-  SERVICE: ["ratePeriod", "depositMinor"],
+  PRODUCT: ["durationMinutes", "ratePeriod", "depositMinor", "bufferMinutes"],
+  SERVICE: ["ratePeriod", "depositMinor", "bufferMinutes"],
   RENTAL: ["durationMinutes"],
 };
 
