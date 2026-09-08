@@ -13,3 +13,8 @@ A unified catalog platform for small merchants selling products, booking service
 ## Business context
 
 This repo is the build only. The market, pricing, and go-to-market plan live in a separate planning folder and are not required to work on this codebase.
+
+
+# To monitor from Terminal
+launchctl print gui/$(id -u)/com.smbcos.buildloop   # status
+launchctl bootout gui/$(id -u)/com.smbcos.buildloop # stop the schedule entirely
