@@ -42,6 +42,12 @@ jobs:
       - name: Dependency vulnerability scan
         run: pnpm audit --audit-level=high
 
+      - name: Install semgrep
+        run: python3 -m pip install --break-system-packages semgrep==1.176.0
+
+      - name: Static analysis (semgrep)
+        run: semgrep scan --config p/security-audit --error --exclude node_modules --exclude coverage --exclude dist .
+
       - name: Lint
         run: pnpm lint
 
