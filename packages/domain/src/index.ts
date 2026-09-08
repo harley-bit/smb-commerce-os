@@ -28,6 +28,8 @@ export * from "./payments/DuplicateWebhookEventError.js";
 export * from "./payments/applicationFeeSplit.js";
 export * from "./payments/PaymentIntentProvider.js";
 export * from "./payments/RefundProvider.js";
+export * from "./payments/PayoutProvider.js";
+export * from "./payments/reconcilePayout.js";
 export * from "./payments/orderedEventApplication.js";
 export * from "./media/mediaRetentionPolicy.js";
 
