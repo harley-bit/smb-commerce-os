@@ -6,7 +6,7 @@ import * as sqliteSchema from "../schema/sqlite.js";
 import { ListingRepository } from "./ListingRepository.js";
 import { LocationRepository } from "./LocationRepository.js";
 import { VariantRepository } from "./VariantRepository.js";
-import { InventoryMovementRepository } from "./InventoryMovementRepository.js";
+import { InsufficientStockError, InventoryMovementRepository } from "./InventoryMovementRepository.js";
 
 describe("InventoryMovementRepository", () => {
   let connection: Connection;
@@ -234,5 +234,125 @@ describe("InventoryMovementRepository", () => {
     });
 
     expect(repo.sumStock(ctxA, variantB)).toBe(0);
+  });
+
+  it("guardedDecrement() succeeds and records a negative-quantity movement when stock covers it", () => {
+    const ctx = createTenantContext(merchantA);
+    repo.record(ctx, {
+      variantId: variantA,
+      locationId: locationA,
+      kind: "RECEIPT",
+      quantity: 10,
+      occurredAt: "2026-09-08T00:00:00.000Z",
+      actorUserId: userId,
+      note: "Initial stock",
+    });
+
+    const id = repo.guardedDecrement(ctx, {
+      variantId: variantA,
+      locationId: locationA,
+      kind: "SALE",
+      quantity: 4,
+      occurredAt: "2026-09-08T01:00:00.000Z",
+      actorUserId: userId,
+      note: "Order #1",
+    });
+
+    expect(repo.listByVariant(ctx, variantA)).toMatchObject([
+      {},
+      { id, kind: "SALE", quantity: -4 },
+    ]);
+    expect(repo.sumStock(ctx, variantA)).toBe(6);
+  });
+
+  it("guardedDecrement() rejects a decrement that would take stock negative, without inserting a row", () => {
+    const ctx = createTenantContext(merchantA);
+    repo.record(ctx, {
+      variantId: variantA,
+      locationId: locationA,
+      kind: "RECEIPT",
+      quantity: 3,
+      occurredAt: "2026-09-08T00:00:00.000Z",
+      actorUserId: userId,
+      note: "Initial stock",
+    });
+
+    expect(() =>
+      repo.guardedDecrement(ctx, {
+        variantId: variantA,
+        locationId: locationA,
+        kind: "SALE",
+        quantity: 4,
+        occurredAt: "2026-09-08T01:00:00.000Z",
+        actorUserId: userId,
+        note: "Order #1",
+      }),
+    ).toThrow(InsufficientStockError);
+
+    expect(repo.sumStock(ctx, variantA)).toBe(3);
+    expect(repo.listByVariant(ctx, variantA)).toHaveLength(1);
+  });
+
+  it("guardedDecrement() rejects a non-positive or non-integer quantity", () => {
+    const ctx = createTenantContext(merchantA);
+
+    for (const quantity of [0, -1, 1.5]) {
+      expect(() =>
+        repo.guardedDecrement(ctx, {
+          variantId: variantA,
+          locationId: locationA,
+          kind: "SALE",
+          quantity,
+          occurredAt: "2026-09-08T00:00:00.000Z",
+          actorUserId: userId,
+          note: "Bad quantity",
+        }),
+      ).toThrow();
+    }
+  });
+
+  it("guardedDecrement() rejects a kind that isn't a recognized decrement kind", () => {
+    const ctx = createTenantContext(merchantA);
+
+    expect(() =>
+      repo.guardedDecrement(ctx, {
+        variantId: variantA,
+        locationId: locationA,
+        kind: "RECEIPT",
+        quantity: 1,
+        occurredAt: "2026-09-08T00:00:00.000Z",
+        actorUserId: userId,
+        note: "Not a decrement kind",
+      }),
+    ).toThrow();
+  });
+
+  it("guardedDecrement() is tenant-scoped — cannot decrement against another merchant's stock", () => {
+    const ctxA = createTenantContext(merchantA);
+    const ctxB = createTenantContext(merchantB);
+
+    repo.record(ctxB, {
+      variantId: variantB,
+      locationId: locationB,
+      kind: "RECEIPT",
+      quantity: 10,
+      occurredAt: "2026-09-08T00:00:00.000Z",
+      actorUserId: userId,
+      note: "B stock",
+    });
+
+    expect(() =>
+      repo.guardedDecrement(ctxA, {
+        variantId: variantB,
+        locationId: locationB,
+        kind: "SALE",
+        quantity: 1,
+        occurredAt: "2026-09-08T00:00:00.000Z",
+        actorUserId: userId,
+        note: "Cross-tenant attempt",
+      }),
+    ).toThrow(InsufficientStockError);
+
+    expect(repo.sumStock(ctxB, variantB)).toBe(10);
   });
 });
