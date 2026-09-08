@@ -840,4 +840,72 @@ describe("ReservationRepository", () => {
       expect(repo.findById(ctx, firstId)?.bufferMinutes).toBe(15);
     });
   });
+
+  /**
+   * `docs/cards/D066.md` — feeds `selectUnitForAllocation`'s
+   * `AllocationCandidate.lastReturnedAt` for the rental unit allocator.
+   */
+  describe("lastReturnedAt() — docs/cards/D066.md", () => {
+    it("returns null for a subject with no COMPLETED reservation", () => {
+      const ctx = createTenantContext(merchantA);
+      const unitId = generateUuidV7();
+
+      repo.create(ctx, {
+        subjectType: "INVENTORY_UNIT",
+        subjectId: unitId,
+        startsAt: "2026-10-01T09:00:00.000Z",
+        endsAt: "2026-10-01T10:00:00.000Z",
+        quantity: 1,
+        state: "HELD",
+        createdAt: "2026-10-01T08:45:00.000Z",
+      });
+
+      expect(repo.lastReturnedAt(ctx, "INVENTORY_UNIT", unitId)).toBeNull();
+    });
+
+    it("returns the endsAt of the most recent COMPLETED reservation for that subject", () => {
+      const ctx = createTenantContext(merchantA);
+      const unitId = generateUuidV7();
+
+      repo.create(ctx, {
+        subjectType: "INVENTORY_UNIT",
+        subjectId: unitId,
+        startsAt: "2026-09-01T09:00:00.000Z",
+        endsAt: "2026-09-01T10:00:00.000Z",
+        quantity: 1,
+        state: "COMPLETED",
+        createdAt: "2026-09-01T08:45:00.000Z",
+      });
+      repo.create(ctx, {
+        subjectType: "INVENTORY_UNIT",
+        subjectId: unitId,
+        startsAt: "2026-10-01T09:00:00.000Z",
+        endsAt: "2026-10-01T10:00:00.000Z",
+        quantity: 1,
+        state: "COMPLETED",
+        createdAt: "2026-10-01T08:45:00.000Z",
+      });
+
+      expect(repo.lastReturnedAt(ctx, "INVENTORY_UNIT", unitId)).toBe("2026-10-01T10:00:00.000Z");
+    });
+
+    it("is tenant-scoped — merchant B's identical unit id does not leak its COMPLETED reservation to merchant A", () => {
+      const ctxA = createTenantContext(merchantA);
+      const ctxB = createTenantContext(merchantB);
+      const unitId = generateUuidV7();
+
+      repo.create(ctxB, {
+        subjectType: "INVENTORY_UNIT",
+        subjectId: unitId,
+        startsAt: "2026-10-01T09:00:00.000Z",
+        endsAt: "2026-10-01T10:00:00.000Z",
+        quantity: 1,
+        state: "COMPLETED",
+        createdAt: "2026-10-01T08:45:00.000Z",
+      });
+
+      expect(repo.lastReturnedAt(ctxA, "INVENTORY_UNIT", unitId)).toBeNull();
+      expect(repo.lastReturnedAt(ctxB, "INVENTORY_UNIT", unitId)).toBe("2026-10-01T10:00:00.000Z");
+    });
+  });
 });

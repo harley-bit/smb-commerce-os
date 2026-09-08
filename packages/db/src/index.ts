@@ -164,3 +164,9 @@ export {
   type CreateServiceBookingInput,
   type HoldCapConfig,
 } from "./services/BookingService.js";
+export {
+  RentalReservationService,
+  MissingIdempotencyKeyError as RentalMissingIdempotencyKeyError,
+  VariantNotRentalError,
+  type CreateRentalReservationInput,
+} from "./services/RentalReservationService.js";

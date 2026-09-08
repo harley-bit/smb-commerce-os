@@ -4,7 +4,7 @@ import {
   generateUuidV7,
   type TenantContext,
 } from "@smb-os/domain";
-import { and, count as sqlCount, eq, gt, lt, or, type SQLWrapper } from "drizzle-orm";
+import { and, count as sqlCount, desc, eq, gt, lt, or, type SQLWrapper } from "drizzle-orm";
 import type { AvailabilityCache } from "../cache/AvailabilityCache.js";
 import type { Connection } from "../connection.js";
 import { reservations } from "../schema/sqlite.js";
@@ -302,6 +302,36 @@ export class ReservationRepository extends TenantScopedRepository<typeof reserva
       )
       .get() as { count: number };
     return row.count;
+  };
+
+  /**
+   * `docs/cards/D066.md` — feeds `selectUnitForAllocation`'s
+   * `AllocationCandidate.lastReturnedAt`: the most recent `endsAt` among this
+   * subject's `COMPLETED` reservations, or `null` if it has never completed
+   * one (a never-used unit, which the allocator always prefers). Derived
+   * from reservation history rather than a stored column on
+   * `inventory_units` itself — see D065's log for why.
+   */
+  lastReturnedAt: RepositoryMethod<[subjectType: ReservationSubjectType, subjectId: string], string | null> = (
+    ctx,
+    subjectType,
+    subjectId,
+  ) => {
+    const row = this.conn.db
+      .select({ endsAt: reservations.endsAt })
+      .from(reservations)
+      .where(
+        and(
+          this.scope(ctx),
+          eq(reservations.subjectType, subjectType),
+          eq(reservations.subjectId, subjectId),
+          eq(reservations.state, "COMPLETED"),
+        ),
+      )
+      .orderBy(desc(reservations.endsAt))
+      .limit(1)
+      .get() as { endsAt: string } | undefined;
+    return row?.endsAt ?? null;
   };
 
   findBlocking: RepositoryMethod<
