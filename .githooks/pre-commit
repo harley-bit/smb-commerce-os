@@ -1,0 +1,11 @@
+#!/usr/bin/env sh
+# Blocks commits that introduce secrets. Installed automatically via the
+# root package.json "prepare" script (git config core.hooksPath .githooks).
+set -e
+
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "pre-commit: gitleaks is not installed (brew install gitleaks) — cannot scan staged changes for secrets, aborting commit." >&2
+  exit 1
+fi
+
+gitleaks protect --staged --redact --exit-code 1

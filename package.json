@@ -16,7 +16,8 @@
     "test:isolation": "turbo run test:isolation",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "dev": "turbo run dev"
+    "dev": "turbo run dev",
+    "prepare": "git config core.hooksPath .githooks"
   },
   "devDependencies": {
     "prettier": "^3.9.6",
