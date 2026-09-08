@@ -346,6 +346,10 @@ export const reservations = sqliteTable(
     expiresAt: text("expires_at"),
     createdAt: text("created_at").notNull(),
     releasedAt: text("released_at"),
+    // D059 — caller-supplied Idempotency-Key, scoped per merchant. Nullable
+    // because older reservation-creation paths (rentals, D050-D057) don't
+    // pass one; the partial unique index below only constrains rows that do.
+    idempotencyKey: text("idempotency_key"),
   },
   (table) => [
     index("reservations_subject_interval_idx").on(
@@ -356,6 +360,9 @@ export const reservations = sqliteTable(
       table.endsAt,
     ),
     index("reservations_state_expires_idx").on(table.state, table.expiresAt),
+    uniqueIndex("reservations_merchant_idempotency_key_unique")
+      .on(table.merchantId, table.idempotencyKey)
+      .where(sql`${table.idempotencyKey} is not null`),
   ],
 );
 

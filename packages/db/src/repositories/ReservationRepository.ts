@@ -1,4 +1,4 @@
-import { generateUuidV7, type TenantContext } from "@smb-os/domain";
+import { applyReservationEvent, generateUuidV7, type TenantContext } from "@smb-os/domain";
 import { and, eq, gt, lt, or, type SQLWrapper } from "drizzle-orm";
 import type { Connection } from "../connection.js";
 import { reservations } from "../schema/sqlite.js";
@@ -20,6 +20,7 @@ export interface Reservation {
   expiresAt: string | null;
   createdAt: string;
   releasedAt: string | null;
+  idempotencyKey: string | null;
 }
 
 export interface CreateReservationInput {
@@ -32,6 +33,8 @@ export interface CreateReservationInput {
   state: ReservationState;
   expiresAt?: string;
   createdAt: string;
+  /** `docs/cards/D059.md` security check — see `createGuarded`'s idempotent-replay behavior. */
+  idempotencyKey?: string;
 }
 
 /** Thrown by `createGuarded` when the requested interval overlaps an existing blocking reservation. */
@@ -101,12 +104,32 @@ export class ReservationRepository extends TenantScopedRepository<typeof reserva
    * is what makes this sum safe to trust: no other writer's blocking
    * reservation for this subject can commit between the sum and the insert.
    */
+  /**
+   * `docs/cards/D059.md` security check — Idempotency-Key required on
+   * creation. When `input.idempotencyKey` is set, a retry carrying the same
+   * key short-circuits to the already-created row instead of re-running the
+   * conflict check: the lookup and the insert both happen inside this same
+   * `BEGIN IMMEDIATE` transaction, so a retry racing the original request for
+   * the same subject is serialized behind it exactly the way a genuine
+   * conflict would be, and finds the row already committed. `capacity`'s
+   * unique index (`reservations_merchant_idempotency_key_unique`) is the
+   * belt-and-braces backstop for any caller that reuses a key across
+   * different subjects — that still resolves as a thrown DB error, not a
+   * silent double-booking, since this method never lets two rows share a key.
+   */
   createGuarded: RepositoryMethod<[input: CreateReservationInput, capacity?: number], string> = (
     ctx,
     input,
     capacity = 1,
   ) => {
     const attempt = this.conn.sqlite.transaction((): string => {
+      if (input.idempotencyKey) {
+        const existing = this.findByIdempotencyKey(ctx, input.idempotencyKey);
+        if (existing) {
+          return existing.id;
+        }
+      }
+
       const blocking = this.findBlocking(
         ctx,
         input.subjectType,
@@ -123,6 +146,49 @@ export class ReservationRepository extends TenantScopedRepository<typeof reserva
     });
 
     return attempt.immediate();
+  };
+
+  findByIdempotencyKey: RepositoryMethod<[idempotencyKey: string], Reservation | undefined> = (
+    ctx,
+    idempotencyKey,
+  ) => {
+    return this.conn.db
+      .select()
+      .from(reservations)
+      .where(and(this.scope(ctx), eq(reservations.idempotencyKey, idempotencyKey)))
+      .get() as Reservation | undefined;
+  };
+
+  findById: RepositoryMethod<[id: string], Reservation | undefined> = (ctx, id) => {
+    return this.conn.db
+      .select()
+      .from(reservations)
+      .where(and(this.scope(ctx), eq(reservations.id, id)))
+      .get() as Reservation | undefined;
+  };
+
+  /**
+   * `docs/cards/D059.md` deliverable — the HELD → CONFIRMED transition.
+   * Routes through `applyReservationEvent` (`packages/domain`) rather than
+   * writing `state` directly, so an illegal transition (already CONFIRMED,
+   * EXPIRED, etc.) throws `IllegalReservationTransitionError` instead of
+   * silently overwriting a terminal or already-advanced state.
+   */
+  confirm: RepositoryMethod<[id: string], void> = (ctx, id) => {
+    const attempt = this.conn.sqlite.transaction((): void => {
+      const row = this.findById(ctx, id);
+      if (!row) {
+        throw new Error(`Reservation not found: ${id}`);
+      }
+      const nextState = applyReservationEvent(row.state, { type: "CONFIRM" });
+      this.conn.db
+        .update(reservations)
+        .set({ state: nextState })
+        .where(and(this.scope(ctx), eq(reservations.id, id)))
+        .run();
+    });
+
+    attempt.immediate();
   };
 
   private insertRow(ctx: TenantContext, input: CreateReservationInput): string {

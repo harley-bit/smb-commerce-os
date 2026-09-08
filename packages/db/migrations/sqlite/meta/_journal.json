@@ -71,6 +71,13 @@
       "when": 1788874057479,
       "tag": "0009_wooden_quicksilver",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1788886966025,
+      "tag": "0010_remarkable_skaar",
+      "breakpoints": true
     }
   ]
 }

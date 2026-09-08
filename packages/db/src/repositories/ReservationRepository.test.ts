@@ -1,4 +1,4 @@
-import { createTenantContext, generateUuidV7 } from "@smb-os/domain";
+import { createTenantContext, generateUuidV7, IllegalReservationTransitionError } from "@smb-os/domain";
 import { beforeEach, describe, expect, it } from "vitest";
 import { createConnection, type Connection } from "../connection.js";
 import { runSqliteMigrations } from "../migrate.js";
@@ -465,5 +465,130 @@ describe("ReservationRepository", () => {
         3,
       ),
     ).toThrow(ReservationConflictError);
+  });
+
+  it("createGuarded() with an idempotencyKey replays the original row on retry instead of re-running the conflict check (D059)", () => {
+    const ctx = createTenantContext(merchantA);
+
+    const firstId = repo.createGuarded(ctx, {
+      subjectType: "RESOURCE",
+      subjectId: resourceA,
+      startsAt: "2026-10-01T09:00:00.000Z",
+      endsAt: "2026-10-01T10:00:00.000Z",
+      quantity: 1,
+      state: "HELD",
+      expiresAt: "2026-10-01T09:15:00.000Z",
+      createdAt: "2026-10-01T08:45:00.000Z",
+      idempotencyKey: "retry-key",
+    });
+
+    const secondId = repo.createGuarded(ctx, {
+      subjectType: "RESOURCE",
+      subjectId: resourceA,
+      startsAt: "2026-10-01T09:00:00.000Z",
+      endsAt: "2026-10-01T10:00:00.000Z",
+      quantity: 1,
+      state: "HELD",
+      expiresAt: "2026-10-01T09:15:00.000Z",
+      createdAt: "2026-10-01T08:45:05.000Z",
+      idempotencyKey: "retry-key",
+    });
+
+    expect(secondId).toEqual(firstId);
+    const rows = repo.findBlocking(
+      ctx,
+      "RESOURCE",
+      resourceA,
+      "2026-10-01T09:00:00.000Z",
+      "2026-10-01T10:00:00.000Z",
+      "2026-10-01T08:45:05.000Z",
+    );
+    expect(rows).toHaveLength(1);
+  });
+
+  it("findByIdempotencyKey() is tenant-scoped — merchant B cannot see merchant A's key", () => {
+    const ctxA = createTenantContext(merchantA);
+    const ctxB = createTenantContext(merchantB);
+
+    repo.createGuarded(ctxA, {
+      subjectType: "RESOURCE",
+      subjectId: resourceA,
+      startsAt: "2026-10-01T09:00:00.000Z",
+      endsAt: "2026-10-01T10:00:00.000Z",
+      quantity: 1,
+      state: "HELD",
+      createdAt: "2026-10-01T08:45:00.000Z",
+      idempotencyKey: "shared-key",
+    });
+
+    expect(repo.findByIdempotencyKey(ctxB, "shared-key")).toBeUndefined();
+  });
+
+  it("confirm() transitions a HELD reservation to CONFIRMED (D059)", () => {
+    const ctx = createTenantContext(merchantA);
+    const id = repo.createGuarded(ctx, {
+      subjectType: "RESOURCE",
+      subjectId: resourceA,
+      startsAt: "2026-10-01T09:00:00.000Z",
+      endsAt: "2026-10-01T10:00:00.000Z",
+      quantity: 1,
+      state: "HELD",
+      createdAt: "2026-10-01T08:45:00.000Z",
+    });
+
+    repo.confirm(ctx, id);
+
+    expect(repo.findById(ctx, id)?.state).toEqual("CONFIRMED");
+  });
+
+  it("confirm() throws IllegalReservationTransitionError when the reservation is not HELD (D059)", () => {
+    const ctx = createTenantContext(merchantA);
+    const id = repo.createGuarded(ctx, {
+      subjectType: "RESOURCE",
+      subjectId: resourceA,
+      startsAt: "2026-10-01T09:00:00.000Z",
+      endsAt: "2026-10-01T10:00:00.000Z",
+      quantity: 1,
+      state: "CONFIRMED",
+      createdAt: "2026-10-01T08:45:00.000Z",
+    });
+
+    expect(() => repo.confirm(ctx, id)).toThrow(IllegalReservationTransitionError);
+  });
+
+  it("findById() is tenant-scoped — merchant B cannot read merchant A's reservation by id", () => {
+    const ctxA = createTenantContext(merchantA);
+    const ctxB = createTenantContext(merchantB);
+
+    const id = repo.createGuarded(ctxA, {
+      subjectType: "RESOURCE",
+      subjectId: resourceA,
+      startsAt: "2026-10-01T09:00:00.000Z",
+      endsAt: "2026-10-01T10:00:00.000Z",
+      quantity: 1,
+      state: "HELD",
+      createdAt: "2026-10-01T08:45:00.000Z",
+    });
+
+    expect(repo.findById(ctxA, id)).toMatchObject({ id });
+    expect(repo.findById(ctxB, id)).toBeUndefined();
+  });
+
+  it("confirm() is tenant-scoped — merchant B cannot confirm merchant A's reservation", () => {
+    const ctxA = createTenantContext(merchantA);
+    const ctxB = createTenantContext(merchantB);
+
+    const id = repo.createGuarded(ctxA, {
+      subjectType: "RESOURCE",
+      subjectId: resourceA,
+      startsAt: "2026-10-01T09:00:00.000Z",
+      endsAt: "2026-10-01T10:00:00.000Z",
+      quantity: 1,
+      state: "HELD",
+      createdAt: "2026-10-01T08:45:00.000Z",
+    });
+
+    expect(() => repo.confirm(ctxB, id)).toThrow(`Reservation not found: ${id}`);
+    expect(repo.findById(ctxA, id)?.state).toEqual("HELD");
   });
 });

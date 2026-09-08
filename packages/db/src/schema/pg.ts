@@ -350,6 +350,10 @@ export const reservations = pgTable(
     expiresAt: timestamp("expires_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
     releasedAt: timestamp("released_at", { withTimezone: true }),
+    // D059 — caller-supplied Idempotency-Key, scoped per merchant. Nullable
+    // because older reservation-creation paths (rentals, D050-D057) don't
+    // pass one; the partial unique index below only constrains rows that do.
+    idempotencyKey: text("idempotency_key"),
   },
   (table) => [
     index("reservations_subject_interval_idx").on(
@@ -360,6 +364,9 @@ export const reservations = pgTable(
       table.endsAt,
     ),
     index("reservations_state_expires_idx").on(table.state, table.expiresAt),
+    uniqueIndex("reservations_merchant_idempotency_key_unique")
+      .on(table.merchantId, table.idempotencyKey)
+      .where(sql`${table.idempotencyKey} is not null`),
   ],
 );
 

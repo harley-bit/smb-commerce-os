@@ -1,0 +1,2 @@
+ALTER TABLE `reservations` ADD `idempotency_key` text;--> statement-breakpoint
+CREATE UNIQUE INDEX `reservations_merchant_idempotency_key_unique` ON `reservations` (`merchant_id`,`idempotency_key`) WHERE "reservations"."idempotency_key" is not null;

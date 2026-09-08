@@ -31,6 +31,22 @@ export class PgReservationRepository {
     try {
       await client.query("BEGIN");
 
+      // `docs/cards/D059.md` security check — Idempotency-Key required on
+      // creation. A retry carrying the same key short-circuits to the
+      // already-created row rather than re-running the conflict check, same
+      // behavior as `ReservationRepository.createGuarded` (SQLite).
+      if (input.idempotencyKey) {
+        const existingResult = await client.query<{ id: string }>(
+          `SELECT id FROM "reservations" WHERE merchant_id = $1 AND idempotency_key = $2`,
+          [ctx.merchantId, input.idempotencyKey],
+        );
+        const existingId = existingResult.rows[0]?.id;
+        if (existingId) {
+          await client.query("COMMIT");
+          return existingId;
+        }
+      }
+
       // Row lock on the resource — serializes concurrent bookings for this
       // resource. Missing row (bad subjectId) is a caller error, not a
       // capacity question, so it's allowed to fall through to whatever the
@@ -80,8 +96,8 @@ export class PgReservationRepository {
       const id = generateUuidV7();
       await client.query(
         `INSERT INTO "reservations"
-           (id, merchant_id, order_line_id, subject_type, subject_id, starts_at, ends_at, quantity, state, expires_at, created_at, released_at)
-         VALUES ($1, $2, NULL, $3, $4, $5, $6, $7, $8, $9, $10, NULL)`,
+           (id, merchant_id, order_line_id, subject_type, subject_id, starts_at, ends_at, quantity, state, expires_at, created_at, released_at, idempotency_key)
+         VALUES ($1, $2, NULL, $3, $4, $5, $6, $7, $8, $9, $10, NULL, $11)`,
         [
           id,
           ctx.merchantId,
@@ -93,6 +109,7 @@ export class PgReservationRepository {
           input.state,
           input.expiresAt ?? null,
           input.createdAt,
+          input.idempotencyKey ?? null,
         ],
       );
 
