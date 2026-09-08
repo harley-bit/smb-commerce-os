@@ -8,3 +8,15 @@ export { createConnection } from "./connection.js";
 export { createPgConnection } from "./pg-connection.js";
 export { runSqliteMigrations, runPgMigrations } from "./migrate.js";
 export { TenantScopedRepository, type RepositoryMethod } from "./tenancy/TenantScopedRepository.js";
+export {
+  MerchantRepository,
+  type Merchant,
+  type CreateMerchantInput,
+  type UpdateMerchantInput,
+} from "./repositories/MerchantRepository.js";
+export {
+  LocationRepository,
+  type Location,
+  type CreateLocationInput,
+  type UpdateLocationInput,
+} from "./repositories/LocationRepository.js";
