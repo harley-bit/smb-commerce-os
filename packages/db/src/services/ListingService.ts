@@ -16,7 +16,7 @@ import type {
  * service, not in a controller/route — a controller only ever calls
  * `ListingService`, never `ListingRepository` directly.
  */
-function assertCanManageCatalog(actingRole: MerchantUserRole): void {
+export function assertCanManageCatalog(actingRole: MerchantUserRole): void {
   if (actingRole !== "OWNER" && actingRole !== "ADMIN") {
     throw new Error(
       `Catalog management is restricted to OWNER or ADMIN, got acting role: ${actingRole}`,

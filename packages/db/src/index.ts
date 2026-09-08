@@ -44,7 +44,11 @@ export {
   type CreateListingInput,
   type UpdateListingInput,
 } from "./repositories/ListingRepository.js";
-export { ListingService } from "./services/ListingService.js";
+export { ListingService, assertCanManageCatalog } from "./services/ListingService.js";
+export {
+  ProductListingService,
+  type CreateProductListingInput,
+} from "./services/ProductListingService.js";
 export {
   AuditLogRepository,
   type AuditActorType,
