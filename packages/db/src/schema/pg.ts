@@ -362,3 +362,77 @@ export const reservations = pgTable(
     index("reservations_state_expires_idx").on(table.state, table.expiresAt),
   ],
 );
+
+/**
+ * `docs/design/03` "Orders". `status` drives the cart → fulfilled/cancelled
+ * lifecycle; totals are always recomputed server-side (`CLAUDE.md`), never
+ * trusted from a client payload — this table stores the result, not the
+ * source of truth for the computation.
+ */
+export const orders = pgTable("orders", {
+  id: uuid("id").primaryKey(),
+  merchantId: uuid("merchant_id")
+    .notNull()
+    .references(() => merchants.id),
+  customerUserId: uuid("customer_user_id")
+    .notNull()
+    .references(() => users.id),
+  status: text("status", {
+    enum: [
+      "CART",
+      "PENDING_PAYMENT",
+      "CONFIRMED",
+      "FULFILLED",
+      "CANCELLED",
+      "REFUNDED",
+    ],
+  }).notNull(),
+  currency: text("currency").notNull(),
+  subtotalMinor: integer("subtotal_minor").notNull(),
+  taxMinor: integer("tax_minor").notNull(),
+  totalMinor: integer("total_minor").notNull(),
+  placedAt: timestamp("placed_at", { withTimezone: true }),
+  cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+});
+
+/**
+ * `docs/design/03` "Orders". `mode`, `unit_price_minor`, and `line_total_minor`
+ * are **copied from the listing/variant at write time, never referenced** —
+ * this is the card's own acceptance criterion: archiving or repricing a
+ * listing later must not alter a historical order line. `listing_id` and
+ * `variant_id` remain as plain lineage references (still FKs — the row they
+ * point to just isn't the source of truth for price/mode after checkout).
+ * `starts_at`/`ends_at` are nullable — only populated for `SERVICE`/`RENTAL`
+ * lines.
+ */
+export const orderLines = pgTable(
+  "order_lines",
+  {
+    id: uuid("id").primaryKey(),
+    merchantId: uuid("merchant_id")
+      .notNull()
+      .references(() => merchants.id),
+    orderId: uuid("order_id")
+      .notNull()
+      .references(() => orders.id),
+    listingId: uuid("listing_id")
+      .notNull()
+      .references(() => listings.id),
+    variantId: uuid("variant_id")
+      .notNull()
+      .references(() => listingVariants.id),
+    mode: text("mode", { enum: ["PRODUCT", "SERVICE", "RENTAL"] }).notNull(),
+    quantity: integer("quantity").notNull(),
+    unitPriceMinor: integer("unit_price_minor").notNull(),
+    lineTotalMinor: integer("line_total_minor").notNull(),
+    depositMinor: integer("deposit_minor"),
+    startsAt: timestamp("starts_at", { withTimezone: true }),
+    endsAt: timestamp("ends_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("order_lines_merchant_order_idx").on(
+      table.merchantId,
+      table.orderId,
+    ),
+  ],
+);
