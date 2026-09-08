@@ -171,3 +171,15 @@ export {
   VariantNotRentalError,
   type CreateRentalReservationInput,
 } from "./services/RentalReservationService.js";
+export {
+  FulfillmentEventRepository,
+  type FulfillmentEvent,
+  type FulfillmentEventKind,
+  type RecordFulfillmentEventInput,
+} from "./repositories/FulfillmentEventRepository.js";
+export {
+  FulfillmentEventService,
+  OrderLineNotFoundError,
+  MissingFulfillmentNoteError,
+  type RecordFulfillmentEventArgs,
+} from "./services/FulfillmentEventService.js";

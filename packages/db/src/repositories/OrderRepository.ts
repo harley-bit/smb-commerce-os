@@ -123,6 +123,14 @@ export class OrderRepository extends TenantScopedRepository<typeof orders.mercha
       .all() as OrderLine[];
   };
 
+  findLineById: RepositoryMethod<[lineId: string], OrderLine | undefined> = (ctx, lineId) => {
+    return this.conn.db
+      .select()
+      .from(orderLines)
+      .where(and(eq(orderLines.merchantId, ctx.merchantId), eq(orderLines.id, lineId)))
+      .get() as OrderLine | undefined;
+  };
+
   updateTotals: RepositoryMethod<[orderId: string, totals: OrderTotals], void> = (ctx, orderId, totals) => {
     this.conn.db
       .update(orders)

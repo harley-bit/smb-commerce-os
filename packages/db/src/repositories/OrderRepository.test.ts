@@ -171,4 +171,23 @@ describe("OrderRepository", () => {
       totalMinor: 2100,
     });
   });
+
+  it("findLineById() returns the line for the owning merchant, undefined for another merchant's line id", () => {
+    const ctxA = createTenantContext(merchantA);
+    const ctxB = createTenantContext(merchantB);
+
+    const orderA = repo.create(ctxA, { customerUserId: userA, status: "CART", currency: "USD" });
+    const lineA = repo.addLine(ctxA, orderA, {
+      listingId: listingA,
+      variantId: variantA,
+      mode: "PRODUCT",
+      quantity: 1,
+      unitPriceMinor: 1000,
+      lineTotalMinor: 1000,
+    });
+
+    expect(repo.findLineById(ctxA, lineA)).toMatchObject({ id: lineA, orderId: orderA });
+    expect(repo.findLineById(ctxB, lineA)).toBeUndefined();
+    expect(repo.findLineById(ctxA, "does-not-exist")).toBeUndefined();
+  });
 });
