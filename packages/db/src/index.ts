@@ -269,3 +269,8 @@ export {
   type CreateCheckoutIntentInput,
   type CheckoutIntentResult,
 } from "./services/CheckoutPaymentService.js";
+export {
+  verifyStripeWebhookSignature,
+  type WebhookVerificationOptions,
+  type WebhookVerificationResult,
+} from "./payments/WebhookSignatureVerifier.js";

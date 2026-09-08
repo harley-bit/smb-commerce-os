@@ -8,6 +8,7 @@ import { problemType, sendProblem } from "./problemDetails.js";
 import { registerAvailabilityRoutes } from "./routes/availability.js";
 import { registerBookingRoutes } from "./routes/bookings.js";
 import { registerListingRoutes } from "./routes/listings.js";
+import { registerWebhookRoutes } from "./routes/webhooks.js";
 import {
   AccountLockedError,
   EmailAlreadyRegisteredError,
@@ -62,6 +63,13 @@ export interface BuildAppOptions {
    * Real end-to-end DB wiring for `apps/api` is still a future card.
    */
   connection?: Connection;
+  /**
+   * `docs/cards/D091.md` — the Stripe webhook signing secret used to verify
+   * `POST /webhooks/stripe`. Defaults to a placeholder in tests/dev; a real
+   * deployment must supply the value from its Stripe Connect webhook
+   * endpoint configuration, never a hardcoded default.
+   */
+  stripeWebhookSecret?: string;
 }
 
 const REQUEST_ID_HEADER = "x-request-id";
@@ -119,6 +127,24 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   });
   void app.register(cookie);
 
+  // `docs/cards/D091.md` — capture the exact raw body alongside the parsed
+  // JSON so `./routes/webhooks.ts` can verify Stripe's signature over the
+  // real bytes received, not a re-serialized copy. Applies to every route
+  // (harmless — `request.body` still parses normally); only the webhook
+  // route reads `request.rawBody`.
+  app.addContentTypeParser("application/json", { parseAs: "string" }, (request, body: string, done) => {
+    request.rawBody = body;
+    if (body.length === 0) {
+      done(null, undefined);
+      return;
+    }
+    try {
+      done(null, JSON.parse(body));
+    } catch (error) {
+      done(error as Error, undefined);
+    }
+  });
+
   registerAuthenticateDecorator(
     app,
     authProvider,
@@ -132,6 +158,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     rateLimit: options.availabilityRateLimit,
   });
   registerBookingRoutes(app, connection, availabilityCache);
+  registerWebhookRoutes(app, options.stripeWebhookSecret ?? "whsec_dev_placeholder");
 
   app.addHook("onSend", async (request, reply, payload) => {
     void reply.header(REQUEST_ID_HEADER, request.id);
