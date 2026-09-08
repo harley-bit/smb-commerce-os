@@ -11,7 +11,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
-    "test:isolation": "echo \"@smb-os/db: no isolation suite yet\""
+    "test:isolation": "echo \"@smb-os/db: no isolation suite yet\"",
+    "db:generate:sqlite": "drizzle-kit generate --config=drizzle.config.sqlite.ts",
+    "db:generate:pg": "drizzle-kit generate --config=drizzle.config.pg.ts"
   },
   "dependencies": {
     "@smb-os/domain": "workspace:*",
