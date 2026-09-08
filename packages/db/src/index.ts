@@ -84,6 +84,11 @@ export {
   type TransitionUnitStatusInput,
 } from "./services/InventoryUnitService.js";
 export {
+  ProductSaleService,
+  type SellProductInput,
+  type SellProductResult,
+} from "./services/ProductSaleService.js";
+export {
   AUDIT_LOG_GENESIS_HASH,
   computeRowHash,
   type AuditLogRowForHash,
