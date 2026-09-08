@@ -8,6 +8,13 @@
       "when": 1788869187729,
       "tag": "0000_motionless_rawhide_kid",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1788870351863,
+      "tag": "0001_motionless_callisto",
+      "breakpoints": true
     }
   ]
 }

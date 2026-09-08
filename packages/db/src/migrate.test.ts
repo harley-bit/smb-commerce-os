@@ -44,7 +44,7 @@ describe.skipIf(!process.env.DATABASE_URL)(
 
       try {
         await connection.pool.query(
-          'DROP TABLE IF EXISTS "migration_smoke_test" CASCADE',
+          'DROP TABLE IF EXISTS "locations", "merchant_users", "users", "merchants", "migration_smoke_test" CASCADE',
         );
         // drizzle-orm/node-postgres's migrator tracks applied migrations in
         // a "drizzle"."__drizzle_migrations" table, not the public schema —
