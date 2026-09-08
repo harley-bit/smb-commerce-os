@@ -96,8 +96,8 @@ export class PgReservationRepository {
       const id = generateUuidV7();
       await client.query(
         `INSERT INTO "reservations"
-           (id, merchant_id, order_line_id, subject_type, subject_id, starts_at, ends_at, quantity, state, expires_at, created_at, released_at, idempotency_key)
-         VALUES ($1, $2, NULL, $3, $4, $5, $6, $7, $8, $9, $10, NULL, $11)`,
+           (id, merchant_id, order_line_id, subject_type, subject_id, starts_at, ends_at, quantity, state, expires_at, created_at, released_at, idempotency_key, created_by_account_id, created_by_ip)
+         VALUES ($1, $2, NULL, $3, $4, $5, $6, $7, $8, $9, $10, NULL, $11, $12, $13)`,
         [
           id,
           ctx.merchantId,
@@ -110,6 +110,8 @@ export class PgReservationRepository {
           input.expiresAt ?? null,
           input.createdAt,
           input.idempotencyKey ?? null,
+          input.createdByAccountId ?? null,
+          input.createdByIp ?? null,
         ],
       );
 

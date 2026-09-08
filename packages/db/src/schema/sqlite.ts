@@ -350,6 +350,11 @@ export const reservations = sqliteTable(
     // because older reservation-creation paths (rentals, D050-D057) don't
     // pass one; the partial unique index below only constrains rows that do.
     idempotencyKey: text("idempotency_key"),
+    // D062 — who/what asked for this hold, for the concurrent-hold caps
+    // (`docs/design/07`/`14` T10). Both nullable: internal callers (rentals,
+    // tests) have neither; an anonymous cart has an IP but no account.
+    createdByAccountId: text("created_by_account_id"),
+    createdByIp: text("created_by_ip"),
   },
   (table) => [
     index("reservations_subject_interval_idx").on(
@@ -363,6 +368,11 @@ export const reservations = sqliteTable(
     uniqueIndex("reservations_merchant_idempotency_key_unique")
       .on(table.merchantId, table.idempotencyKey)
       .where(sql`${table.idempotencyKey} is not null`),
+    // D062 — the two lookups `countActiveHoldsByAccount`/`countActiveHoldsByIp`
+    // run on every booking attempt, so both need their own index rather than
+    // sharing `reservations_state_expires_idx`.
+    index("reservations_holder_account_idx").on(table.merchantId, table.state, table.createdByAccountId),
+    index("reservations_holder_ip_idx").on(table.merchantId, table.state, table.createdByIp),
   ],
 );
 

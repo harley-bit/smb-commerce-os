@@ -1,5 +1,5 @@
 import { applyReservationEvent, generateUuidV7, type TenantContext } from "@smb-os/domain";
-import { and, eq, gt, lt, or, type SQLWrapper } from "drizzle-orm";
+import { and, count as sqlCount, eq, gt, lt, or, type SQLWrapper } from "drizzle-orm";
 import type { AvailabilityCache } from "../cache/AvailabilityCache.js";
 import type { Connection } from "../connection.js";
 import { reservations } from "../schema/sqlite.js";
@@ -22,6 +22,8 @@ export interface Reservation {
   createdAt: string;
   releasedAt: string | null;
   idempotencyKey: string | null;
+  createdByAccountId: string | null;
+  createdByIp: string | null;
 }
 
 export interface CreateReservationInput {
@@ -36,6 +38,9 @@ export interface CreateReservationInput {
   createdAt: string;
   /** `docs/cards/D059.md` security check — see `createGuarded`'s idempotent-replay behavior. */
   idempotencyKey?: string;
+  /** `docs/cards/D062.md` — who/what asked for this hold, for the concurrent-hold caps. */
+  createdByAccountId?: string;
+  createdByIp?: string;
 }
 
 /** Thrown by `createGuarded` when the requested interval overlaps an existing blocking reservation. */
@@ -224,6 +229,50 @@ export class ReservationRepository extends TenantScopedRepository<typeof reserva
       .run();
     return id;
   }
+
+  /**
+   * `docs/cards/D062.md` — the per-account concurrent-hold cap
+   * (`docs/design/07`/`14` T10). Same lazy-expiry predicate as
+   * `findBlocking`/`blockingStatePredicate`'s HELD branch: an unswept
+   * expired hold never counts against the cap, so the cap self-heals
+   * without needing the sweeper to have run first.
+   */
+  countActiveHoldsByAccount: RepositoryMethod<[accountId: string, asOf: string], number> = (
+    ctx,
+    accountId,
+    asOf,
+  ) => {
+    const row = this.conn.db
+      .select({ count: sqlCount() })
+      .from(reservations)
+      .where(
+        and(
+          this.scope(ctx),
+          eq(reservations.createdByAccountId, accountId),
+          eq(reservations.state, "HELD"),
+          gt(reservations.expiresAt, asOf),
+        ),
+      )
+      .get() as { count: number };
+    return row.count;
+  };
+
+  /** `docs/cards/D062.md` — the per-IP cap, stricter for anonymous carts (no account id at all). */
+  countActiveHoldsByIp: RepositoryMethod<[ip: string, asOf: string], number> = (ctx, ip, asOf) => {
+    const row = this.conn.db
+      .select({ count: sqlCount() })
+      .from(reservations)
+      .where(
+        and(
+          this.scope(ctx),
+          eq(reservations.createdByIp, ip),
+          eq(reservations.state, "HELD"),
+          gt(reservations.expiresAt, asOf),
+        ),
+      )
+      .get() as { count: number };
+    return row.count;
+  };
 
   findBlocking: RepositoryMethod<
     [

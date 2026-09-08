@@ -5,7 +5,7 @@ import { runSqliteMigrations } from "../migrate.js";
 import * as sqliteSchema from "../schema/sqlite.js";
 import { ReservationConflictError, ReservationRepository } from "../repositories/ReservationRepository.js";
 import { ResourceRepository } from "../repositories/ResourceRepository.js";
-import { BookingService, MissingIdempotencyKeyError } from "./BookingService.js";
+import { BookingService, HoldLimitExceededError, MissingIdempotencyKeyError } from "./BookingService.js";
 
 describe("BookingService", () => {
   let connection: Connection;
@@ -187,6 +187,110 @@ describe("BookingService", () => {
           createdAt: "2026-10-01T08:45:00.000Z",
         }),
       ).toThrow(ForbiddenActionError);
+    });
+  });
+
+  describe("hold exhaustion limits — docs/cards/D062.md, GATE G3", () => {
+    // Each booking targets a distinct non-overlapping window so the cap is
+    // what rejects the request, not `ReservationConflictError`.
+    function windowFor(hour: number): { startsAt: string; endsAt: string } {
+      const startsAt = `2026-11-01T${String(hour).padStart(2, "0")}:00:00.000Z`;
+      const endsAt = `2026-11-01T${String(hour + 1).padStart(2, "0")}:00:00.000Z`;
+      return { startsAt, endsAt };
+    }
+
+    it("rejects a new hold once an authenticated account is at its concurrent-hold cap", () => {
+      const ctx = createTenantContext(merchantA);
+      const strict = new BookingService(new ResourceRepository(connection), new ReservationRepository(connection), {
+        perAccountLimit: 2,
+        perIpLimit: 20,
+        anonymousLimit: 1,
+      });
+      const accountId = generateUuidV7();
+
+      for (let i = 0; i < 2; i++) {
+        strict.createServiceBooking(ctx, "STAFF", {
+          resourceId: resourceA,
+          ...windowFor(9 + i),
+          quantity: 1,
+          idempotencyKey: `idem-account-${i}`,
+          createdAt: "2026-10-01T08:45:00.000Z",
+          createdByAccountId: accountId,
+        });
+      }
+
+      expect(() =>
+        strict.createServiceBooking(ctx, "STAFF", {
+          resourceId: resourceA,
+          ...windowFor(20),
+          quantity: 1,
+          idempotencyKey: "idem-account-over",
+          createdAt: "2026-10-01T08:45:00.000Z",
+          createdByAccountId: accountId,
+        }),
+      ).toThrow(HoldLimitExceededError);
+    });
+
+    it("applies a stricter cap to an anonymous caller (no account id) than an authenticated one on the same IP", () => {
+      const ctx = createTenantContext(merchantA);
+      const strict = new BookingService(new ResourceRepository(connection), new ReservationRepository(connection), {
+        perAccountLimit: 5,
+        perIpLimit: 5,
+        anonymousLimit: 1,
+      });
+      const ip = "203.0.113.9";
+
+      strict.createServiceBooking(ctx, "STAFF", {
+        resourceId: resourceA,
+        ...windowFor(9),
+        quantity: 1,
+        idempotencyKey: "idem-anon-1",
+        createdAt: "2026-10-01T08:45:00.000Z",
+        createdByIp: ip,
+      });
+
+      expect(() =>
+        strict.createServiceBooking(ctx, "STAFF", {
+          resourceId: resourceA,
+          ...windowFor(10),
+          quantity: 1,
+          idempotencyKey: "idem-anon-2",
+          createdAt: "2026-10-01T08:45:00.000Z",
+          createdByIp: ip,
+        }),
+      ).toThrow(HoldLimitExceededError);
+    });
+
+    it("an expired hold does not count against the cap (lazy expiry, no sweeper dependency)", () => {
+      const ctx = createTenantContext(merchantA);
+      const strict = new BookingService(new ResourceRepository(connection), new ReservationRepository(connection), {
+        perAccountLimit: 1,
+        perIpLimit: 20,
+        anonymousLimit: 1,
+      });
+      const accountId = generateUuidV7();
+
+      strict.createServiceBooking(ctx, "STAFF", {
+        resourceId: resourceA,
+        ...windowFor(9),
+        quantity: 1,
+        idempotencyKey: "idem-expired-1",
+        createdAt: "2026-10-01T08:00:00.000Z",
+        expiresAt: "2026-10-01T08:10:00.000Z",
+        createdByAccountId: accountId,
+      });
+
+      expect(() =>
+        strict.createServiceBooking(ctx, "STAFF", {
+          resourceId: resourceA,
+          ...windowFor(10),
+          quantity: 1,
+          idempotencyKey: "idem-expired-2",
+          // Later than the first hold's expiry — the cap check must treat it as free.
+          createdAt: "2026-10-01T09:00:00.000Z",
+          createdByAccountId: accountId,
+        }),
+      ).not.toThrow();
     });
   });
 });

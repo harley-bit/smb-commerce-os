@@ -18,6 +18,21 @@ export interface SweepResult {
 }
 
 /**
+ * `docs/cards/D062.md` "abandonment monitored" — the risk register (T10)
+ * names abandonment monitoring as part of the hold-exhaustion mitigation
+ * alongside the concurrent-hold caps. Fired once per sweep, only when it
+ * actually expired something, so a job running every minute doesn't
+ * generate alert noise on every empty tick.
+ */
+export type AbandonmentReporter = (result: SweepResult) => void;
+
+function reportIfAbandoned(result: SweepResult, onAbandoned?: AbandonmentReporter): void {
+  if (result.expiredReservationIds.length > 0) {
+    onAbandoned?.(result);
+  }
+}
+
+/**
  * Runs every minute per the design doc; must be safe to run concurrently
  * with itself. `BEGIN IMMEDIATE` (same lock discipline as
  * `ReservationRepository.createGuarded`) makes a second concurrent call
@@ -27,7 +42,11 @@ export interface SweepResult {
  * it twice, or from N racing callers, expires each hold and releases each
  * deposit authorization exactly once.
  */
-export function sweepExpiredHoldsSqlite(conn: Connection, asOf: string): SweepResult {
+export function sweepExpiredHoldsSqlite(
+  conn: Connection,
+  asOf: string,
+  onAbandoned?: AbandonmentReporter,
+): SweepResult {
   const attempt = conn.sqlite.transaction((): SweepResult => {
     const expiredRows = conn.db
       .select({ id: reservations.id, orderLineId: reservations.orderLineId })
@@ -75,7 +94,9 @@ export function sweepExpiredHoldsSqlite(conn: Connection, asOf: string): SweepRe
     return { expiredReservationIds, releasedDepositAuthorizationIds };
   });
 
-  return attempt.immediate();
+  const result = attempt.immediate();
+  reportIfAbandoned(result, onAbandoned);
+  return result;
 }
 
 /**
@@ -87,7 +108,11 @@ export function sweepExpiredHoldsSqlite(conn: Connection, asOf: string): SweepRe
  * and the loser's `WHERE` re-evaluates against the winner's committed
  * update, so it matches zero rows instead of double-expiring anything.
  */
-export async function sweepExpiredHoldsPg(pool: Pool, asOf: string): Promise<SweepResult> {
+export async function sweepExpiredHoldsPg(
+  pool: Pool,
+  asOf: string,
+  onAbandoned?: AbandonmentReporter,
+): Promise<SweepResult> {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -121,7 +146,9 @@ export async function sweepExpiredHoldsPg(pool: Pool, asOf: string): Promise<Swe
     }
 
     await client.query("COMMIT");
-    return { expiredReservationIds, releasedDepositAuthorizationIds };
+    const result = { expiredReservationIds, releasedDepositAuthorizationIds };
+    reportIfAbandoned(result, onAbandoned);
+    return result;
   } catch (err) {
     await client.query("ROLLBACK").catch(() => {});
     throw err;

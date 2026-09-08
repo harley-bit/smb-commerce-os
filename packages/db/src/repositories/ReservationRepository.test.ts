@@ -591,4 +591,134 @@ describe("ReservationRepository", () => {
     expect(() => repo.confirm(ctxB, id)).toThrow(`Reservation not found: ${id}`);
     expect(repo.findById(ctxA, id)?.state).toEqual("HELD");
   });
+
+  describe("countActiveHoldsByAccount() — docs/cards/D062.md", () => {
+    it("counts only unexpired HELD reservations for that account", () => {
+      const ctx = createTenantContext(merchantA);
+      const accountId = generateUuidV7();
+
+      repo.create(ctx, {
+        subjectType: "RESOURCE",
+        subjectId: resourceA,
+        startsAt: "2026-10-01T09:00:00.000Z",
+        endsAt: "2026-10-01T10:00:00.000Z",
+        quantity: 1,
+        state: "HELD",
+        expiresAt: "2026-10-01T09:15:00.000Z",
+        createdAt: "2026-10-01T08:45:00.000Z",
+        createdByAccountId: accountId,
+      });
+      // Already expired — must not count.
+      repo.create(ctx, {
+        subjectType: "RESOURCE",
+        subjectId: resourceA,
+        startsAt: "2026-10-02T09:00:00.000Z",
+        endsAt: "2026-10-02T10:00:00.000Z",
+        quantity: 1,
+        state: "HELD",
+        expiresAt: "2026-10-01T09:00:00.000Z",
+        createdAt: "2026-10-01T08:45:00.000Z",
+        createdByAccountId: accountId,
+      });
+      // CONFIRMED — no longer just a hold, must not count.
+      repo.create(ctx, {
+        subjectType: "RESOURCE",
+        subjectId: resourceA,
+        startsAt: "2026-10-03T09:00:00.000Z",
+        endsAt: "2026-10-03T10:00:00.000Z",
+        quantity: 1,
+        state: "CONFIRMED",
+        createdAt: "2026-10-01T08:45:00.000Z",
+        createdByAccountId: accountId,
+      });
+      // Someone else's account — must not count.
+      repo.create(ctx, {
+        subjectType: "RESOURCE",
+        subjectId: resourceA,
+        startsAt: "2026-10-04T09:00:00.000Z",
+        endsAt: "2026-10-04T10:00:00.000Z",
+        quantity: 1,
+        state: "HELD",
+        expiresAt: "2026-10-01T09:15:00.000Z",
+        createdAt: "2026-10-01T08:45:00.000Z",
+        createdByAccountId: generateUuidV7(),
+      });
+
+      expect(repo.countActiveHoldsByAccount(ctx, accountId, "2026-10-01T09:00:00.000Z")).toBe(1);
+    });
+
+    it("is tenant-scoped — merchant B's identical account id does not count toward merchant A's cap", () => {
+      const ctxA = createTenantContext(merchantA);
+      const ctxB = createTenantContext(merchantB);
+      const accountId = generateUuidV7();
+
+      repo.create(ctxB, {
+        subjectType: "RESOURCE",
+        subjectId: resourceB,
+        startsAt: "2026-10-01T09:00:00.000Z",
+        endsAt: "2026-10-01T10:00:00.000Z",
+        quantity: 1,
+        state: "HELD",
+        expiresAt: "2026-10-01T09:15:00.000Z",
+        createdAt: "2026-10-01T08:45:00.000Z",
+        createdByAccountId: accountId,
+      });
+
+      expect(repo.countActiveHoldsByAccount(ctxA, accountId, "2026-10-01T09:00:00.000Z")).toBe(0);
+      expect(repo.countActiveHoldsByAccount(ctxB, accountId, "2026-10-01T09:00:00.000Z")).toBe(1);
+    });
+  });
+
+  describe("countActiveHoldsByIp() — docs/cards/D062.md, the anonymous-cart cap", () => {
+    it("counts only unexpired HELD reservations from that IP", () => {
+      const ctx = createTenantContext(merchantA);
+      const ip = "203.0.113.7";
+
+      repo.create(ctx, {
+        subjectType: "RESOURCE",
+        subjectId: resourceA,
+        startsAt: "2026-10-01T09:00:00.000Z",
+        endsAt: "2026-10-01T10:00:00.000Z",
+        quantity: 1,
+        state: "HELD",
+        expiresAt: "2026-10-01T09:15:00.000Z",
+        createdAt: "2026-10-01T08:45:00.000Z",
+        createdByIp: ip,
+      });
+      repo.create(ctx, {
+        subjectType: "RESOURCE",
+        subjectId: resourceA,
+        startsAt: "2026-10-02T09:00:00.000Z",
+        endsAt: "2026-10-02T10:00:00.000Z",
+        quantity: 1,
+        state: "HELD",
+        expiresAt: "2026-10-01T09:00:00.000Z",
+        createdAt: "2026-10-01T08:45:00.000Z",
+        createdByIp: ip,
+      });
+
+      expect(repo.countActiveHoldsByIp(ctx, ip, "2026-10-01T09:00:00.000Z")).toBe(1);
+    });
+
+    it("is tenant-scoped — merchant B's identical IP does not count toward merchant A's cap", () => {
+      const ctxA = createTenantContext(merchantA);
+      const ctxB = createTenantContext(merchantB);
+      const ip = "203.0.113.7";
+
+      repo.create(ctxB, {
+        subjectType: "RESOURCE",
+        subjectId: resourceB,
+        startsAt: "2026-10-01T09:00:00.000Z",
+        endsAt: "2026-10-01T10:00:00.000Z",
+        quantity: 1,
+        state: "HELD",
+        expiresAt: "2026-10-01T09:15:00.000Z",
+        createdAt: "2026-10-01T08:45:00.000Z",
+        createdByIp: ip,
+      });
+
+      expect(repo.countActiveHoldsByIp(ctxA, ip, "2026-10-01T09:00:00.000Z")).toBe(0);
+      expect(repo.countActiveHoldsByIp(ctxB, ip, "2026-10-01T09:00:00.000Z")).toBe(1);
+    });
+  });
 });

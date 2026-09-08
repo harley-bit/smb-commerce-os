@@ -261,6 +261,40 @@ describe("sweepExpiredHoldsSqlite (D057)", () => {
     expect(third.releasedDepositAuthorizationIds).toEqual([]);
   });
 
+  it("docs/cards/D062.md — reports abandonment via the onAbandoned hook exactly when holds actually expired", async () => {
+    const connection = createConnection(":memory:");
+    await runSqliteMigrations(connection);
+    await seed(connection);
+
+    const ctx = createTenantContext(merchantId);
+    const repo = new ReservationRepository(connection);
+    const reservationId = repo.create(ctx, {
+      orderLineId: "order-line-1",
+      subjectType: "RESOURCE",
+      subjectId: "resource-1",
+      startsAt: "2026-10-01T09:00:00.000Z",
+      endsAt: "2026-10-01T10:00:00.000Z",
+      quantity: 1,
+      state: "HELD",
+      expiresAt: "2026-10-01T08:15:00.000Z",
+      createdAt: "2026-10-01T08:00:00.000Z",
+    });
+
+    const reports: unknown[] = [];
+    const result = sweepExpiredHoldsSqlite(connection, "2026-10-01T08:20:00.000Z", (r) => reports.push(r));
+
+    expect(reports).toEqual([result]);
+    expect(result.expiredReservationIds).toEqual([reservationId]);
+
+    // Nothing left to sweep — the hook must not fire for an empty result
+    // (this card's security check: abandonment monitoring should not
+    // generate alert noise on every no-op tick of a job that runs every
+    // minute).
+    const secondReports: unknown[] = [];
+    sweepExpiredHoldsSqlite(connection, "2026-10-01T08:20:00.000Z", (r) => secondReports.push(r));
+    expect(secondReports).toEqual([]);
+  });
+
   it("never expires CONFIRMED/IN_USE reservations, only HELD ones", async () => {
     const connection = createConnection(":memory:");
     await runSqliteMigrations(connection);
@@ -538,6 +572,35 @@ describe.skipIf(!process.env.DATABASE_URL)("sweepExpiredHoldsPg (D057, real Post
       const second = await sweepExpiredHoldsPg(connection.pool, "2026-10-01T08:20:00.000Z");
       expect(second.expiredReservationIds).toEqual([]);
       expect(second.releasedDepositAuthorizationIds).toEqual([]);
+    } finally {
+      await connection.pool.end();
+    }
+  });
+
+  it("docs/cards/D062.md — reports abandonment via the onAbandoned hook exactly when holds actually expired", async () => {
+    const connection = await freshConnection();
+    try {
+      await connection.db.insert(pgSchema.reservations).values({
+        id: "018e6b3a-9c3e-7000-8000-0000000000ee",
+        merchantId,
+        orderLineId,
+        subjectType: "RESOURCE",
+        subjectId: resourceId,
+        startsAt: new Date("2026-10-01T09:00:00.000Z"),
+        endsAt: new Date("2026-10-01T10:00:00.000Z"),
+        quantity: 1,
+        state: "HELD",
+        expiresAt: new Date("2026-10-01T08:15:00.000Z"),
+        createdAt: new Date("2026-10-01T08:00:00.000Z"),
+      });
+
+      const reports: unknown[] = [];
+      const result = await sweepExpiredHoldsPg(connection.pool, "2026-10-01T08:20:00.000Z", (r) => reports.push(r));
+      expect(reports).toEqual([result]);
+
+      const secondReports: unknown[] = [];
+      await sweepExpiredHoldsPg(connection.pool, "2026-10-01T08:20:00.000Z", (r) => secondReports.push(r));
+      expect(secondReports).toEqual([]);
     } finally {
       await connection.pool.end();
     }

@@ -109,6 +109,12 @@ function bookingPayload(resourceId: string): Record<string, unknown> {
   return { resourceId, startsAt: STARTS_AT, endsAt: ENDS_AT, quantity: 1 };
 }
 
+function bookingPayloadAt(resourceId: string, hour: number): Record<string, unknown> {
+  const startsAt = `2026-10-05T${String(hour).padStart(2, "0")}:00:00.000Z`;
+  const endsAt = `2026-10-05T${String(hour + 1).padStart(2, "0")}:00:00.000Z`;
+  return { resourceId, startsAt, endsAt, quantity: 1 };
+}
+
 function createBookingDirect(connection: Connection, merchantId: string, resourceId: string): string {
   const service = new BookingService(new ResourceRepository(connection), new ReservationRepository(connection));
   return service.createServiceBooking(createTenantContext(merchantId), "OWNER", {
@@ -230,6 +236,32 @@ describe("booking endpoints", () => {
       });
       expect(second.statusCode).toBe(201);
       expect((second.json() as { id: string }).id).toBe((first.json() as { id: string }).id);
+    });
+  });
+
+  describe("hold exhaustion limits — docs/cards/D062.md, GATE G3", () => {
+    it("returns 429 once the acting account is at its concurrent-hold cap, without leaking the cap's value", async () => {
+      const fx = await setupFixture("OWNER");
+
+      for (let hour = 0; hour < 5; hour++) {
+        const res = await fx.app.inject({
+          method: "POST",
+          url: "/bookings",
+          headers: { ...fx.merchantHeader, "idempotency-key": generateUuidV7() },
+          payload: bookingPayloadAt(fx.resourceId, hour),
+        });
+        expect(res.statusCode).toBe(201);
+      }
+
+      const overCap = await fx.app.inject({
+        method: "POST",
+        url: "/bookings",
+        headers: { ...fx.merchantHeader, "idempotency-key": generateUuidV7() },
+        payload: bookingPayloadAt(fx.resourceId, 20),
+      });
+      expect(overCap.statusCode).toBe(429);
+      expect(overCap.body).not.toContain("perAccountLimit");
+      expect((overCap.json() as { detail?: string }).detail).not.toMatch(/[0-9]/);
     });
   });
 

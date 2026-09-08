@@ -13,14 +13,49 @@ export interface CreateServiceBookingInput {
   createdAt: string;
   /** `docs/design/05` "Default 15 minutes; configurable per merchant." Defaults below if omitted. */
   expiresAt?: string;
+  /** `docs/cards/D062.md` — the identity the concurrent-hold cap is enforced against. Undefined means anonymous. */
+  createdByAccountId?: string;
+  createdByIp?: string;
 }
 
 const DEFAULT_HOLD_MINUTES = 15;
+
+/**
+ * `docs/design/07`/`14` T10 "Hold exhaustion" — an attacker or a bug
+ * reserving every slot without paying. Three independent caps, all
+ * evaluated against the same lazy-expiry count `ReservationRepository`
+ * already uses for overlap checks (`state = 'HELD' AND expires_at > asOf`),
+ * so a cap frees up the instant a hold expires with no sweeper dependency:
+ * `perAccountLimit` for an authenticated caller's own concurrent holds,
+ * `perIpLimit` as a looser shared ceiling per source IP, and the stricter
+ * `anonymousLimit` applied by IP alone when there is no account id at all
+ * (`docs/design/07` "Anonymous carts get a stricter concurrent-hold cap
+ * than authenticated ones").
+ */
+export interface HoldCapConfig {
+  perAccountLimit: number;
+  perIpLimit: number;
+  anonymousLimit: number;
+}
+
+export const DEFAULT_HOLD_CAPS: HoldCapConfig = {
+  perAccountLimit: 5,
+  perIpLimit: 20,
+  anonymousLimit: 3,
+};
 
 export class MissingIdempotencyKeyError extends Error {
   constructor() {
     super("Idempotency-Key is required to create a booking");
     this.name = "MissingIdempotencyKeyError";
+  }
+}
+
+/** `docs/cards/D062.md` — thrown when a caller is at its concurrent-hold cap. */
+export class HoldLimitExceededError extends Error {
+  constructor() {
+    super("Too many concurrent holds — release or confirm an existing hold before creating another.");
+    this.name = "HoldLimitExceededError";
   }
 }
 
@@ -43,6 +78,7 @@ export class BookingService {
   constructor(
     private readonly resources: ResourceRepository,
     private readonly reservations: ReservationRepository,
+    private readonly holdCaps: HoldCapConfig = DEFAULT_HOLD_CAPS,
   ) {}
 
   createServiceBooking(
@@ -55,6 +91,8 @@ export class BookingService {
     if (!input.idempotencyKey) {
       throw new MissingIdempotencyKeyError();
     }
+
+    this.assertUnderHoldCap(ctx, input);
 
     const resource = this.resources.findById(ctx, input.resourceId);
     if (!resource) {
@@ -76,6 +114,8 @@ export class BookingService {
         createdAt: input.createdAt,
         expiresAt,
         idempotencyKey: input.idempotencyKey,
+        createdByAccountId: input.createdByAccountId,
+        createdByIp: input.createdByIp,
       },
       resource.capacity,
     );
@@ -84,5 +124,24 @@ export class BookingService {
   confirmServiceBooking(ctx: TenantContext, actingRole: MerchantUserRole, reservationId: string): void {
     assertCan({ role: actingRole }, "bookings:manage");
     this.reservations.confirm(ctx, reservationId);
+  }
+
+  private assertUnderHoldCap(ctx: TenantContext, input: CreateServiceBookingInput): void {
+    const asOf = input.createdAt;
+
+    if (input.createdByAccountId) {
+      const accountHolds = this.reservations.countActiveHoldsByAccount(ctx, input.createdByAccountId, asOf);
+      if (accountHolds >= this.holdCaps.perAccountLimit) {
+        throw new HoldLimitExceededError();
+      }
+    }
+
+    if (input.createdByIp) {
+      const ipLimit = input.createdByAccountId ? this.holdCaps.perIpLimit : this.holdCaps.anonymousLimit;
+      const ipHolds = this.reservations.countActiveHoldsByIp(ctx, input.createdByIp, asOf);
+      if (ipHolds >= ipLimit) {
+        throw new HoldLimitExceededError();
+      }
+    }
   }
 }

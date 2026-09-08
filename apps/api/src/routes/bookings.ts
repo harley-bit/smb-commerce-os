@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { assertCan, ForbiddenActionError, IllegalReservationTransitionError } from "@smb-os/domain";
 import {
   BookingService,
+  HoldLimitExceededError,
   MissingIdempotencyKeyError,
   ReservationConflictError,
   ReservationRepository,
@@ -110,6 +111,13 @@ export function registerBookingRoutes(app: FastifyInstance, connection: Connecti
         ...parsed.data,
         idempotencyKey,
         createdAt: new Date().toISOString(),
+        // `docs/cards/D062.md` — the concurrent-hold cap's two dimensions.
+        // This route is always staff-authenticated (never anonymous, see
+        // `requireBookingsManage` above), so `createdByAccountId` is always
+        // set here; `BookingService`'s `anonymousLimit` branch is exercised
+        // by a future public/anonymous checkout endpoint, not this one.
+        createdByAccountId: request.auth!.identity.userId,
+        createdByIp: request.ip,
       });
       return reply.code(201).send({ id, state: "HELD" });
     } catch (error) {
@@ -125,6 +133,9 @@ export function registerBookingRoutes(app: FastifyInstance, connection: Connecti
           "Conflict",
           "This resource is not available for the requested time.",
         );
+      }
+      if (error instanceof HoldLimitExceededError) {
+        return sendProblem(request, reply, 429, problemType("too-many-requests"), "Too Many Requests", error.message);
       }
       if (error instanceof MissingIdempotencyKeyError) {
         return sendProblem(request, reply, 400, problemType("bad-request"), "Bad Request", error.message);

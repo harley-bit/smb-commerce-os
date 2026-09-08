@@ -127,6 +127,7 @@ export {
   sweepExpiredHoldsSqlite,
   sweepExpiredHoldsPg,
   type SweepResult,
+  type AbandonmentReporter,
 } from "./jobs/HoldExpirySweeper.js";
 export {
   ResourceRepository,
@@ -157,6 +158,9 @@ export {
 } from "./services/AvailabilityService.js";
 export {
   BookingService,
+  DEFAULT_HOLD_CAPS,
+  HoldLimitExceededError,
   MissingIdempotencyKeyError,
   type CreateServiceBookingInput,
+  type HoldCapConfig,
 } from "./services/BookingService.js";
