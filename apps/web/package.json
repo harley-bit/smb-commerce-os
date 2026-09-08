@@ -4,21 +4,25 @@
   "version": "0.0.0",
   "license": "UNLICENSED",
   "type": "module",
-  "main": "./dist/index.js",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "next build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
     "test:isolation": "echo \"@smb-os/web: no isolation suite yet\"",
-    "dev": "echo \"@smb-os/web: no dev server yet\""
+    "dev": "next dev"
   },
   "dependencies": {
-    "@smb-os/contracts": "workspace:*"
+    "@smb-os/contracts": "workspace:*",
+    "next": "^15.5.25",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
   },
   "devDependencies": {
     "@smb-os/eslint-config": "workspace:*",
     "@types/node": "^26.4.1",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
     "eslint": "^10.10.0",
     "typescript": "^5.7.2",
     "vitest": "^3.2.7"

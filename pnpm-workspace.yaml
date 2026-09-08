@@ -6,6 +6,7 @@ allowBuilds:
   esbuild: true
 overrides:
   vite: "^6.4.3"
+  postcss: "^8.5.18"
 minimumReleaseAgeExclude:
   - "@typescript-eslint/eslint-plugin@8.70.0"
   - "@typescript-eslint/parser@8.70.0"

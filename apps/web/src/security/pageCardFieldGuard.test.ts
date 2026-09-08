@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readdirSync, readFileSync } from "node:fs";
 import { extname, join } from "node:path";
-import { scanSourceForCardFields } from "./cardFieldScanner.js";
+import { scanSourceForCardFields } from "./cardFieldScanner";
 
 const SCAN_ROOT = join(import.meta.dirname, "..");
 const SCANNABLE_EXTENSIONS = new Set([".ts", ".tsx", ".html"]);
