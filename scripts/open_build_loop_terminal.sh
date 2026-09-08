@@ -5,7 +5,12 @@
 # privacy protection), so launchd's only job is to open Terminal; this
 # script does the real work of deciding whether there's a card to run.
 
-REPO_DIR="/Users/harleybarrales/Documents/Git Code Base/smb-commerce-os"
+# Self-resolving, not hardcoded: this script's content is identical in the
+# main repo and in the loop's dedicated worktree (../smb-commerce-os-loop,
+# see docs/design/17) -- it must operate on wherever it actually lives, or a
+# hardcoded main-repo path here would silently undo the worktree fix by
+# cd-ing straight back to whatever branch the primary checkout has.
+REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 LOCK_FILE="$REPO_DIR/scripts/.loop.lock"
 
 cd "$REPO_DIR" || { echo "cannot cd into $REPO_DIR"; exit 1; }
