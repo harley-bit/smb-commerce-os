@@ -17,6 +17,7 @@
     "@smb-os/eslint-config": "workspace:*",
     "@vitest/coverage-v8": "^3.2.7",
     "eslint": "^10.10.0",
+    "fast-check": "^4.9.0",
     "typescript": "^5.7.2",
     "vitest": "^3.2.7"
   }
