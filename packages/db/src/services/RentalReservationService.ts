@@ -20,6 +20,15 @@ export interface CreateRentalReservationInput {
   expiresAt?: string;
   createdByAccountId?: string;
   createdByIp?: string;
+  /**
+   * `docs/cards/D086.md` — the order line this reservation belongs to, once
+   * checkout has created one. Optional because a HELD reservation can exist
+   * before an order line does (a hold placed while the customer is still
+   * browsing); when present, it is what lets `FulfillmentEventService`
+   * (`findByOrderLineId`) later drive this same reservation through pickup
+   * and return.
+   */
+  orderLineId?: string;
 }
 
 const DEFAULT_HOLD_MINUTES = 15;
@@ -116,6 +125,7 @@ export class RentalReservationService {
     return this.reservations.createGuarded(
       ctx,
       {
+        orderLineId: input.orderLineId,
         subjectType: "INVENTORY_UNIT",
         subjectId: selected.unitId,
         startsAt: input.startsAt,
