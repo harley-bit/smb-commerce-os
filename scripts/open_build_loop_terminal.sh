@@ -24,5 +24,8 @@ if [[ ! "$next_card" =~ ^D[0-9]{3}$ ]]; then
   exit 0
 fi
 
-echo "Current card: $next_card -- running up to 10 cards."
-exec python3 scripts/run_build_loop.py --max-cards 10
+suggestion=$(python3 scripts/run_build_loop.py --show-suggestion 2>&1)
+count=$(echo "$suggestion" | head -1)
+reason=$(echo "$suggestion" | tail -n +2)
+echo "Current card: $next_card -- auto-suggested $count card(s) ($reason)"
+exec python3 scripts/run_build_loop.py --auto

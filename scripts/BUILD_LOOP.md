@@ -55,13 +55,38 @@ before committing to a window: if another run is already active or there's no
 current card, it prints one line and exits — the window stays open (harmless,
 just an idle prompt) rather than closing itself, since closing it
 programmatically risks touching windows that aren't ours. If there's a real
-card, it runs `python3 scripts/run_build_loop.py --max-cards 10` in that same
-window so you can watch it live. (Validated 2026-09-08 against D002-D006's
-real commit timestamps: 2.8-8.7 min/card, avg 5.6 min — 10 cards fits inside
-an hour at the average pace. Re-check this once harder phases start; Phase 0
-toolchain cards are the lightest in the whole plan. An hourly firing that
-lands mid-run is a safe no-op via the PID lock, not a double-execution risk,
-so an occasional overrun past the hour costs nothing but wall-clock time.)
+card, it runs `python3 scripts/run_build_loop.py --auto` in that same window
+so you can watch it live.
+
+### `--auto`: the card count adapts itself, per hour, per phase
+
+Added 2026-09-08, replacing a fixed `--max-cards N`. Every card that actually
+completes has its real wall-clock time recorded next to its own heuristic
+"Est. Duration" figure, in `scripts/loop_runs/card_timings.jsonl`. `--auto`
+takes the **median (actual / estimated) ratio** over the last 20 completions,
+then walks forward from the current card applying that same ratio to *each
+upcoming card's own estimate* — not a flat average of past cards, which would
+be misleading the moment a much harder or easier phase starts — and greedily
+packs cards into a 90%-of-an-hour budget (3240s), stopping before the next
+one would blow the budget.
+
+Concrete example from this repo's own history: D002–D008 (toolchain
+scaffolding, all estimated at 1.0h) actually took 2.8–9.2 min each — a median
+ratio of ~0.091x. Applied forward, D009–D012 include D010 (the native
+`AuthProvider` rewrite, estimated 4.0h — much bigger than the toolchain
+cards) and D012 (a gate day, 2.5h). `--auto` correctly predicted only 4 cards
+would fit that hour, not the flat 10 that had been hardcoded before this —
+see `python3 scripts/run_build_loop.py --show-suggestion` to inspect the
+reasoning without running anything.
+
+Falls back to a fixed default (`AUTO_DEFAULT_CARDS = 5` in
+`run_build_loop.py`) until at least 3 real completions exist — there's no
+signal to adapt from before that. An hourly firing that lands mid-run is
+still a safe no-op via the PID lock either way, so `--auto` under-predicting
+just means a shorter batch this hour, and over-predicting just means the run
+spills past the hour before the loop naturally settles back onto the
+schedule — neither is a correctness problem, only a pacing one, and the
+history file keeps making the pacing better as more phases complete.
 
 Useful commands:
 

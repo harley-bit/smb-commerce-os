@@ -20,13 +20,26 @@ tell "usage limit, try again later" apart from "stalled, needs a human".
 Usage:
     python3 scripts/run_build_loop.py                # run until limit/blocked
     python3 scripts/run_build_loop.py --max-cards 3   # cap this invocation
+    python3 scripts/run_build_loop.py --auto          # adaptive cap for ~1 hour (see below)
     python3 scripts/run_build_loop.py --once          # exactly one card
     python3 scripts/run_build_loop.py --dry-run       # show next card, exit
+    python3 scripts/run_build_loop.py --show-suggestion  # print the --auto card count and why, without running
+
+--auto: every completed card's actual wall-clock time is recorded next to its
+own heuristic "Est. Duration" figure in scripts/loop_runs/card_timings.jsonl.
+From the median (actual / estimated) ratio over recent completions, --auto
+predicts each *upcoming* card's actual time as (that card's own estimate x
+ratio) and greedily packs cards into a ~1-hour budget -- so the count adapts
+per phase using each card's own estimate, not a flat average of past cards
+that may have been much easier or harder. Falls back to a fixed default
+until enough samples exist.
 """
 
 import argparse
+import json
 import os
 import re
+import statistics
 import subprocess
 import sys
 import time
@@ -39,8 +52,16 @@ CARDS_DIR = REPO / "docs" / "cards"
 LOGS_DIR = REPO / "docs" / "logs"
 RUN_LOG_DIR = REPO / "scripts" / "loop_runs"
 LOCK_FILE = REPO / "scripts" / ".loop.lock"
+TIMINGS_FILE = REPO / "scripts" / "loop_runs" / "card_timings.jsonl"
 
 DAY_ID_RE = re.compile(r"\bD\d{3}\b")
+ESTIMATE_RE = re.compile(r"Estimated build duration \(AI-assisted session\):\*\*\s*([\d.]+)h")
+
+AUTO_DEFAULT_CARDS = 5     # used until enough real samples exist
+AUTO_MIN_SAMPLES = 3       # fewer completions than this -> not enough signal to trust a ratio
+AUTO_HISTORY_WINDOW = 20   # only the most recent N completions inform the ratio
+AUTO_MAX_LOOKAHEAD = 20    # never suggest more than this many cards regardless of pace
+AUTO_BUDGET_SECONDS = 3600 * 0.9  # target 90% of the hour, leaving a buffer
 
 USAGE_LIMIT_MARKERS = (
     "usage limit",
@@ -100,6 +121,99 @@ def get_current_card() -> str:
     if not m:
         raise RuntimeError("Could not find a Day ID in BUILD_STATE.md's Current card section")
     return m.group(0)
+
+
+def get_estimated_hours(day_id: str) -> float | None:
+    card_file = CARDS_DIR / f"{day_id}.md"
+    if not card_file.exists():
+        return None
+    m = ESTIMATE_RE.search(card_file.read_text())
+    return float(m.group(1)) if m else None
+
+
+def record_card_timing(day_id: str, elapsed_seconds: float) -> None:
+    estimated_hours = get_estimated_hours(day_id)
+    entry = {
+        "day": day_id,
+        "estimated_hours": estimated_hours,
+        "actual_seconds": round(elapsed_seconds, 1),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    RUN_LOG_DIR.mkdir(parents=True, exist_ok=True)
+    with TIMINGS_FILE.open("a") as f:
+        f.write(json.dumps(entry) + "\n")
+
+
+def load_recent_timings(limit: int = AUTO_HISTORY_WINDOW) -> list[dict]:
+    if not TIMINGS_FILE.exists():
+        return []
+    entries = []
+    for line in TIMINGS_FILE.read_text().splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            entries.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    return entries[-limit:]
+
+
+def next_day_id(day_id: str, offset: int) -> str:
+    n = int(day_id[1:]) + offset
+    return f"D{n:03d}"
+
+
+def upcoming_estimates(start_day_id: str, limit: int) -> list[tuple[str, float]]:
+    result = []
+    for i in range(limit):
+        day = next_day_id(start_day_id, i)
+        hours = get_estimated_hours(day)
+        if hours is None:
+            break
+        result.append((day, hours))
+    return result
+
+
+def suggest_max_cards() -> tuple[int, str]:
+    """Returns (count, human-readable reasoning) for --auto."""
+    timings = [t for t in load_recent_timings() if t.get("estimated_hours")]
+
+    if len(timings) < AUTO_MIN_SAMPLES:
+        return AUTO_DEFAULT_CARDS, (
+            f"only {len(timings)} timed completion(s) so far (need {AUTO_MIN_SAMPLES}) -- "
+            f"using the fixed default of {AUTO_DEFAULT_CARDS} until there's enough signal"
+        )
+
+    ratios = [t["actual_seconds"] / (t["estimated_hours"] * 3600) for t in timings]
+    ratio = statistics.median(ratios)
+
+    try:
+        current = get_current_card()
+    except RuntimeError as e:
+        return AUTO_DEFAULT_CARDS, f"could not read current card ({e}) -- using default"
+
+    upcoming = upcoming_estimates(current, AUTO_MAX_LOOKAHEAD)
+    if not upcoming:
+        return AUTO_DEFAULT_CARDS, f"no card files found from {current} onward -- using default"
+
+    accumulated = 0.0
+    count = 0
+    for day, est_hours in upcoming:
+        predicted = est_hours * 3600 * ratio
+        if count >= 1 and accumulated + predicted > AUTO_BUDGET_SECONDS:
+            break
+        accumulated += predicted
+        count += 1
+
+    count = max(1, min(count, AUTO_MAX_LOOKAHEAD))
+    reasoning = (
+        f"median actual/estimate ratio over last {len(timings)} completions is {ratio:.3f}x "
+        f"({ratio*3600:.0f}s of actual work per estimated hour); packing {upcoming[0][0]}.."
+        f"{upcoming[min(count, len(upcoming))-1][0]} (predicted {accumulated:.0f}s) into a "
+        f"{AUTO_BUDGET_SECONDS:.0f}s budget -> {count} card(s)"
+    )
+    return count, reasoning
 
 
 def working_tree_dirty() -> bool:
@@ -199,6 +313,7 @@ def run_one_card(sleep_after: int) -> int:
                 f"{expected_log} does not exist -- log the discrepancy and "
                 f"check manually."
             )
+        record_card_timing(before, elapsed)
         if sleep_after > 0:
             time.sleep(sleep_after)
         return EXIT_OK
@@ -212,10 +327,13 @@ def run_one_card(sleep_after: int) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--max-cards", type=int, default=None, help="Stop after this many cards this run (default: unlimited).")
+    cap_group = parser.add_mutually_exclusive_group()
+    cap_group.add_argument("--max-cards", type=int, default=None, help="Stop after this many cards this run (default: unlimited).")
+    cap_group.add_argument("--auto", action="store_true", help="Adaptively cap this run to roughly fit a 1-hour window, based on recent actual-vs-estimated performance (see module docstring).")
     parser.add_argument("--once", action="store_true", help="Run exactly one card, then exit.")
     parser.add_argument("--sleep", type=int, default=10, help="Seconds to pause between cards (default: 10).")
     parser.add_argument("--dry-run", action="store_true", help="Print the current card and exit, without running anything.")
+    parser.add_argument("--show-suggestion", action="store_true", help="Print the --auto card count and reasoning, then exit, without running anything.")
     args = parser.parse_args()
 
     if args.dry_run:
@@ -226,7 +344,18 @@ def main() -> int:
             return EXIT_ERROR
         return EXIT_OK
 
-    max_cards = 1 if args.once else args.max_cards
+    if args.show_suggestion:
+        count, reasoning = suggest_max_cards()
+        print(f"{count}\n{reasoning}")
+        return EXIT_OK
+
+    if args.once:
+        max_cards = 1
+    elif args.auto:
+        max_cards, reasoning = suggest_max_cards()
+        log(f"--auto suggests {max_cards} card(s): {reasoning}")
+    else:
+        max_cards = args.max_cards
     count = 0
 
     with Lock():
