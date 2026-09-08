@@ -190,3 +190,14 @@ export {
   type ConditionReportPhase,
   type CreateConditionReportInput,
 } from "./repositories/ConditionReportRepository.js";
+export {
+  ConditionMediaUploadService,
+  ConditionReportNotFoundError,
+  UnsupportedMediaTypeError,
+  MediaTooLargeError,
+  ALLOWED_CONDITION_MEDIA_CONTENT_TYPES,
+  MAX_CONDITION_MEDIA_BYTES,
+  type RequestConditionMediaUploadInput,
+  type ConditionMediaUploadGrant,
+} from "./services/ConditionMediaUploadService.js";
+export { HmacMediaUploadProvider, type HmacMediaUploadProviderConfig } from "./media/HmacMediaUploadProvider.js";

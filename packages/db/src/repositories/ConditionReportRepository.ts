@@ -74,4 +74,13 @@ export class ConditionReportRepository extends TenantScopedRepository<
       .get() as { id: string } | undefined;
     return row !== undefined;
   };
+
+  /** `docs/cards/D073.md` — a media upload must be tied to a report the caller's merchant actually owns. */
+  findById: RepositoryMethod<[id: string], ConditionReport | undefined> = (ctx, id) => {
+    return this.conn.db
+      .select()
+      .from(conditionReports)
+      .where(and(this.scope(ctx), eq(conditionReports.id, id)))
+      .get() as ConditionReport | undefined;
+  };
 }

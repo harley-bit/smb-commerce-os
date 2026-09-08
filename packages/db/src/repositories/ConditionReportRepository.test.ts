@@ -141,6 +141,39 @@ describe("ConditionReportRepository", () => {
     expect(repo.hasCheckoutReport(ctxB, orderLineA)).toBe(false);
   });
 
+  it("findById() returns the report for the owning merchant", () => {
+    const ctx = createTenantContext(merchantA);
+
+    const id = repo.create(ctx, {
+      orderLineId: orderLineA,
+      inventoryUnitId: inventoryUnitA,
+      phase: "CHECKOUT",
+      conditionGrade: "GOOD",
+      notes: null,
+      createdBy: userA,
+      createdAt: "2026-09-08T09:00:00.000Z",
+    });
+
+    expect(repo.findById(ctx, id)).toMatchObject({ id, phase: "CHECKOUT" });
+  });
+
+  it("findById() does not let merchant B read merchant A's condition report", () => {
+    const ctxA = createTenantContext(merchantA);
+    const ctxB = createTenantContext(merchantB);
+
+    const id = repo.create(ctxA, {
+      orderLineId: orderLineA,
+      inventoryUnitId: inventoryUnitA,
+      phase: "CHECKOUT",
+      conditionGrade: "GOOD",
+      notes: null,
+      createdBy: userA,
+      createdAt: "2026-09-08T09:00:00.000Z",
+    });
+
+    expect(repo.findById(ctxB, id)).toBeUndefined();
+  });
+
   it("listByOrderLine() does not let merchant B list merchant A's condition reports", () => {
     const ctxA = createTenantContext(merchantA);
     const ctxB = createTenantContext(merchantB);
