@@ -50,6 +50,15 @@ export {
   type CreateProductListingInput,
 } from "./services/ProductListingService.js";
 export {
+  VariantRepository,
+  type Variant,
+  type VariantMode,
+  type VariantRatePeriod,
+  type CreateVariantInput,
+  type UpdateVariantInput,
+} from "./repositories/VariantRepository.js";
+export { VariantService } from "./services/VariantService.js";
+export {
   AuditLogRepository,
   type AuditActorType,
   type AuditLogEntry,
