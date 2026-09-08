@@ -40,3 +40,29 @@ describe("CI pipeline skeleton (.github/workflows/ci.yml)", () => {
     expect(testIndex).toBeGreaterThan(typecheckIndex);
   });
 });
+
+/**
+ * `docs/design/04` requires the suite to run against both database dialects
+ * in CI so a portability failure (e.g. a migration that applies to SQLite
+ * but not PostgreSQL) is caught the day it is written, not months later.
+ * The main `build` job already covers SQLite (`packages/db`'s dialect
+ * tests skip when DATABASE_URL is unset); this asserts a second job runs
+ * a real PostgreSQL service container with DATABASE_URL set, so the
+ * PostgreSQL-only tests actually execute.
+ */
+describe("PostgreSQL dialect job (docs/design/04 CI matrix)", () => {
+  it("runs a postgres service container", () => {
+    const workflow = readWorkflow();
+    expect(workflow).toMatch(/image:\s*postgres:16/);
+  });
+
+  it("sets DATABASE_URL so the PostgreSQL dialect tests actually run", () => {
+    const workflow = readWorkflow();
+    expect(workflow).toMatch(/DATABASE_URL:\s*postgres:\/\//);
+  });
+
+  it("runs the db package's test suite against the postgres service", () => {
+    const workflow = readWorkflow();
+    expect(workflow).toMatch(/pnpm --filter @smb-os\/db test/);
+  });
+});

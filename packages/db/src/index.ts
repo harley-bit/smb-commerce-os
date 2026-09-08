@@ -5,3 +5,4 @@ export function dbPackageMarker(): string {
 }
 
 export { createConnection } from "./connection.js";
+export { createPgConnection } from "./pg-connection.js";

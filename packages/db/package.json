@@ -16,11 +16,13 @@
   "dependencies": {
     "@smb-os/domain": "workspace:*",
     "better-sqlite3": "^13.0.3",
-    "drizzle-orm": "^0.45.2"
+    "drizzle-orm": "^0.45.2",
+    "pg": "^8.16.3"
   },
   "devDependencies": {
     "@smb-os/eslint-config": "workspace:*",
     "@types/better-sqlite3": "^9.6.0",
+    "@types/pg": "^8.15.5",
     "drizzle-kit": "^0.31.10",
     "eslint": "^10.10.0",
     "typescript": "^5.7.2",
