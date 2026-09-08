@@ -10,12 +10,18 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint .",
-    "test": "echo \"@smb-os/contracts: no tests yet\"",
+    "test": "vitest run --coverage",
     "test:isolation": "echo \"@smb-os/contracts: no isolation suite yet\""
+  },
+  "dependencies": {
+    "@smb-os/domain": "workspace:*",
+    "zod": "^4.1.13"
   },
   "devDependencies": {
     "@smb-os/eslint-config": "workspace:*",
+    "@vitest/coverage-v8": "^3.2.7",
     "eslint": "^10.10.0",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vitest": "^3.2.7"
   }
 }
