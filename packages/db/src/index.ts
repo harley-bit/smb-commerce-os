@@ -65,6 +65,13 @@ export {
   type AppendAuditLogInput,
 } from "./repositories/AuditLogRepository.js";
 export {
+  InventoryMovementRepository,
+  type InventoryMovement,
+  type InventoryMovementKind,
+  type RecordMovementInput,
+} from "./repositories/InventoryMovementRepository.js";
+export { InventoryService, type ReceiveStockInput } from "./services/InventoryService.js";
+export {
   AUDIT_LOG_GENESIS_HASH,
   computeRowHash,
   type AuditLogRowForHash,
