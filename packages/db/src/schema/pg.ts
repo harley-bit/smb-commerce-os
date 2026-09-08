@@ -510,3 +510,103 @@ export const depositAuthorizations = pgTable("deposit_authorizations", {
   capturedMinor: integer("captured_minor"),
   releasedAt: timestamp("released_at", { withTimezone: true }),
 });
+
+/**
+ * `docs/design/03` "Rental lifecycle". Append-only — an order line's
+ * pickup/return/no-show/completion/cancellation history, not a mutable
+ * status field. The reservation's own state transitions are driven by
+ * these events, not set directly.
+ */
+export const fulfillmentEvents = pgTable("fulfillment_events", {
+  id: uuid("id").primaryKey(),
+  merchantId: uuid("merchant_id")
+    .notNull()
+    .references(() => merchants.id),
+  orderLineId: uuid("order_line_id")
+    .notNull()
+    .references(() => orderLines.id),
+  kind: text("kind", {
+    enum: ["PICKED_UP", "RETURNED", "NO_SHOW", "COMPLETED", "CANCELLED"],
+  }).notNull(),
+  occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
+  actorUserId: uuid("actor_user_id")
+    .notNull()
+    .references(() => users.id),
+  note: text("note").notNull(),
+});
+
+/**
+ * `docs/design/03` "Rental lifecycle". `phase` distinguishes a `CHECKOUT`
+ * report (required before a rental line can move to `IN_USE`) from a
+ * `CHECKIN` report — without the former, a later damage claim has no
+ * baseline to compare against.
+ */
+export const conditionReports = pgTable("condition_reports", {
+  id: uuid("id").primaryKey(),
+  merchantId: uuid("merchant_id")
+    .notNull()
+    .references(() => merchants.id),
+  orderLineId: uuid("order_line_id")
+    .notNull()
+    .references(() => orderLines.id),
+  inventoryUnitId: uuid("inventory_unit_id")
+    .notNull()
+    .references(() => inventoryUnits.id),
+  phase: text("phase", { enum: ["CHECKOUT", "CHECKIN"] }).notNull(),
+  conditionGrade: text("condition_grade").notNull(),
+  notes: text("notes"),
+  createdBy: uuid("created_by")
+    .notNull()
+    .references(() => users.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+});
+
+/**
+ * `docs/design/03` "Rental lifecycle". `sha256` is the tamper-evidence
+ * anchor the security check names — a checkout/checkin photo is
+ * functionally evidence in a financial dispute, so its content hash is
+ * recorded alongside the storage pointer rather than trusted implicitly.
+ */
+export const conditionMedia = pgTable("condition_media", {
+  id: uuid("id").primaryKey(),
+  merchantId: uuid("merchant_id")
+    .notNull()
+    .references(() => merchants.id),
+  conditionReportId: uuid("condition_report_id")
+    .notNull()
+    .references(() => conditionReports.id),
+  storageKey: text("storage_key").notNull(),
+  contentType: text("content_type").notNull(),
+  bytes: integer("bytes").notNull(),
+  sha256: text("sha256").notNull(),
+  capturedAt: timestamp("captured_at", { withTimezone: true }).notNull(),
+});
+
+/**
+ * `docs/design/03` "Rental lifecycle". Financial record: never deleted, no
+ * `archivedAt` column. `resolved_at`/`resolution_note` are nullable —
+ * populated once `state` reaches one of the `RESOLVED_*`/`DISPUTED` states.
+ */
+export const damageClaims = pgTable("damage_claims", {
+  id: uuid("id").primaryKey(),
+  merchantId: uuid("merchant_id")
+    .notNull()
+    .references(() => merchants.id),
+  orderLineId: uuid("order_line_id")
+    .notNull()
+    .references(() => orderLines.id),
+  amountMinor: integer("amount_minor").notNull(),
+  state: text("state", {
+    enum: [
+      "DRAFT",
+      "FILED",
+      "CUSTOMER_NOTIFIED",
+      "RESOLVED_CAPTURED",
+      "RESOLVED_WAIVED",
+      "DISPUTED",
+    ],
+  }).notNull(),
+  filedAt: timestamp("filed_at", { withTimezone: true }).notNull(),
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  resolutionNote: text("resolution_note"),
+});

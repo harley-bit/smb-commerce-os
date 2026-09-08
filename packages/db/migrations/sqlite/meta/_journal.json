@@ -57,6 +57,13 @@
       "when": 1788873322548,
       "tag": "0007_needy_clea",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1788873634173,
+      "tag": "0008_dry_sway",
+      "breakpoints": true
     }
   ]
 }

@@ -506,3 +506,103 @@ export const depositAuthorizations = sqliteTable("deposit_authorizations", {
   capturedMinor: integer("captured_minor"),
   releasedAt: text("released_at"),
 });
+
+/**
+ * `docs/design/03` "Rental lifecycle". Append-only — an order line's
+ * pickup/return/no-show/completion/cancellation history, not a mutable
+ * status field. The reservation's own state transitions are driven by
+ * these events, not set directly.
+ */
+export const fulfillmentEvents = sqliteTable("fulfillment_events", {
+  id: text("id").primaryKey(),
+  merchantId: text("merchant_id")
+    .notNull()
+    .references(() => merchants.id),
+  orderLineId: text("order_line_id")
+    .notNull()
+    .references(() => orderLines.id),
+  kind: text("kind", {
+    enum: ["PICKED_UP", "RETURNED", "NO_SHOW", "COMPLETED", "CANCELLED"],
+  }).notNull(),
+  occurredAt: text("occurred_at").notNull(),
+  actorUserId: text("actor_user_id")
+    .notNull()
+    .references(() => users.id),
+  note: text("note").notNull(),
+});
+
+/**
+ * `docs/design/03` "Rental lifecycle". `phase` distinguishes a `CHECKOUT`
+ * report (required before a rental line can move to `IN_USE`) from a
+ * `CHECKIN` report — without the former, a later damage claim has no
+ * baseline to compare against.
+ */
+export const conditionReports = sqliteTable("condition_reports", {
+  id: text("id").primaryKey(),
+  merchantId: text("merchant_id")
+    .notNull()
+    .references(() => merchants.id),
+  orderLineId: text("order_line_id")
+    .notNull()
+    .references(() => orderLines.id),
+  inventoryUnitId: text("inventory_unit_id")
+    .notNull()
+    .references(() => inventoryUnits.id),
+  phase: text("phase", { enum: ["CHECKOUT", "CHECKIN"] }).notNull(),
+  conditionGrade: text("condition_grade").notNull(),
+  notes: text("notes"),
+  createdBy: text("created_by")
+    .notNull()
+    .references(() => users.id),
+  createdAt: text("created_at").notNull(),
+});
+
+/**
+ * `docs/design/03` "Rental lifecycle". `sha256` is the tamper-evidence
+ * anchor the security check names — a checkout/checkin photo is
+ * functionally evidence in a financial dispute, so its content hash is
+ * recorded alongside the storage pointer rather than trusted implicitly.
+ */
+export const conditionMedia = sqliteTable("condition_media", {
+  id: text("id").primaryKey(),
+  merchantId: text("merchant_id")
+    .notNull()
+    .references(() => merchants.id),
+  conditionReportId: text("condition_report_id")
+    .notNull()
+    .references(() => conditionReports.id),
+  storageKey: text("storage_key").notNull(),
+  contentType: text("content_type").notNull(),
+  bytes: integer("bytes").notNull(),
+  sha256: text("sha256").notNull(),
+  capturedAt: text("captured_at").notNull(),
+});
+
+/**
+ * `docs/design/03` "Rental lifecycle". Financial record: never deleted, no
+ * `archivedAt` column. `resolved_at`/`resolution_note` are nullable —
+ * populated once `state` reaches one of the `RESOLVED_*`/`DISPUTED` states.
+ */
+export const damageClaims = sqliteTable("damage_claims", {
+  id: text("id").primaryKey(),
+  merchantId: text("merchant_id")
+    .notNull()
+    .references(() => merchants.id),
+  orderLineId: text("order_line_id")
+    .notNull()
+    .references(() => orderLines.id),
+  amountMinor: integer("amount_minor").notNull(),
+  state: text("state", {
+    enum: [
+      "DRAFT",
+      "FILED",
+      "CUSTOMER_NOTIFIED",
+      "RESOLVED_CAPTURED",
+      "RESOLVED_WAIVED",
+      "DISPUTED",
+    ],
+  }).notNull(),
+  filedAt: text("filed_at").notNull(),
+  resolvedAt: text("resolved_at"),
+  resolutionNote: text("resolution_note"),
+});
