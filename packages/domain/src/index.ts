@@ -15,6 +15,7 @@ export * from "./reservations/bufferExpansion.js";
 export * from "./reservations/unitAllocator.js";
 export * from "./rentals/conditionGrade.js";
 export * from "./rentals/damageClaimStateMachine.js";
+export * from "./rentals/lateFeePolicy.js";
 export * from "./payments/depositStateMachine.js";
 export * from "./payments/authorizationWindow.js";
 
