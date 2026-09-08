@@ -15,6 +15,11 @@ import {
 } from "@smb-os/domain";
 import { isAllowedOrigin } from "./auth/originCheck.js";
 import { SlidingWindowRateLimiter } from "./auth/rateLimiter.js";
+import {
+  createDefaultMembershipResolver,
+  registerAuthenticateDecorator,
+  type MerchantMembershipResolver,
+} from "./auth/authenticate.js";
 
 // This is the one file in `apps/api` allowed to name `NativeAuthProvider`
 // (it wires the concrete class to a real `AuthProvider` binding below);
@@ -37,6 +42,8 @@ export interface BuildAppOptions {
   onResetTokenIssued?: ResetTokenNotifier;
   /** Test-only hook for asserting on structured log output; production uses stdout. */
   loggerStream?: Writable | { write: (chunk: string) => void };
+  /** Injectable for tests; defaults to a real but unwired resolver — see `./auth/authenticate.ts`. */
+  merchantMembershipResolver?: MerchantMembershipResolver;
 }
 
 const REQUEST_ID_HEADER = "x-request-id";
@@ -93,6 +100,12 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     },
   });
   void app.register(cookie);
+
+  registerAuthenticateDecorator(
+    app,
+    authProvider,
+    options.merchantMembershipResolver ?? createDefaultMembershipResolver(),
+  );
 
   app.addHook("onSend", async (request, reply, payload) => {
     void reply.header(REQUEST_ID_HEADER, request.id);

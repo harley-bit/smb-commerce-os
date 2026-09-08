@@ -113,7 +113,7 @@ Boundaries: unauthenticated public ↔ API; customer ↔ merchant data; **mercha
 | ------------------------------------------------------- | ------------ | ------------------------------------------------------------------------------------------------ |
 | Credential stuffing on merchant accounts                | High         | Managed IdP with breach-password detection; MFA on OWNER/ADMIN; progressive delays               |
 | Forged Stripe webhooks triggering deposit release       | **Critical** | Signature verification before parsing; unverified events discarded and logged as security events |
-| Session hijacking via stolen token                      | High         | Short-lived tokens; refresh rotation with reuse detection; httpOnly Secure cookies               |
+| Session hijacking via stolen token                      | High         | Server-side revocable session token, httpOnly Secure `SameSite=Strict` cookie ([ADR-002](../adr/ADR-002-authentication-provider.md) supersedes the short-lived-access-token / refresh-rotation design below — see the "Authentication" section's note) |
 | Customer impersonation to view another's rental history | Medium       | Authorization checked against `customer_user_id` on every order read                             |
 
 ### Tampering
