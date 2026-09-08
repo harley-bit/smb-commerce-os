@@ -230,6 +230,57 @@ describe.skipIf(!process.env.DATABASE_URL)("PgReservationRepository.createGuarde
     }
   });
 
+  it("D056: an expired-but-unswept HELD reservation on an INVENTORY_UNIT does not block a new overlapping request", async () => {
+    const connection = await freshConnection(1);
+    try {
+      const repo = new PgReservationRepository(connection.pool);
+      const ctx = createTenantContext(merchantId);
+      const inventoryUnitId = "018e6b3a-9c3e-7000-8000-0000000000fa";
+
+      // First request holds the unit, then the hold's expiresAt passes —
+      // no sweeper has run yet, so this row is still `state = 'HELD'` on
+      // disk (docs/cards/D056.md's exact scenario).
+      await repo.createGuarded(
+        ctx,
+        {
+          subjectType: "INVENTORY_UNIT",
+          subjectId: inventoryUnitId,
+          startsAt: "2026-10-01T09:00:00.000Z",
+          endsAt: "2026-10-01T10:00:00.000Z",
+          quantity: 1,
+          state: "HELD",
+          expiresAt: "2026-10-01T08:50:00.000Z",
+          createdAt: "2026-10-01T08:45:00.000Z",
+        },
+        1,
+      );
+
+      // A second, overlapping request arrives after expiry — it must be
+      // admitted, since the first hold is no longer actually blocking, even
+      // though its row is still `state = 'HELD'` until the sweeper runs.
+      const secondId = await repo.createGuarded(
+        ctx,
+        {
+          subjectType: "INVENTORY_UNIT",
+          subjectId: inventoryUnitId,
+          startsAt: "2026-10-01T09:00:00.000Z",
+          endsAt: "2026-10-01T10:00:00.000Z",
+          quantity: 1,
+          state: "HELD",
+          expiresAt: "2026-10-01T09:15:00.000Z",
+          createdAt: "2026-10-01T09:00:00.000Z",
+        },
+        1,
+      );
+
+      expect(secondId).toBeTruthy();
+      const rows = await connection.db.select().from(pgSchema.reservations);
+      expect(rows).toHaveLength(2);
+    } finally {
+      await connection.pool.end();
+    }
+  });
+
   it("is tenant-scoped — merchant B's blocking reservation is not summed against merchant A's capacity check", async () => {
     const connection = await freshConnection(1);
     try {

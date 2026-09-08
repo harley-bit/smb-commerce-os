@@ -40,6 +40,25 @@ export class PgReservationRepository {
         ctx.merchantId,
       ]);
 
+      // `docs/cards/D056.md` — the exclusion constraint's WHERE clause
+      // (migration 0011) is a static index predicate; it cannot compare
+      // `expires_at` against "now" the way `findBlocking`/the sum query
+      // below do, so an unswept expired HELD row would otherwise still
+      // trip it on the INSERT below. Closing exactly those rows (never
+      // active ones — the predicate only matches already-expired holds)
+      // here, inside the same transaction, keeps the write path correct
+      // independent of whether a background sweeper has run yet.
+      await client.query(
+        `UPDATE "reservations"
+            SET state = 'EXPIRED', released_at = $1
+          WHERE merchant_id = $2
+            AND subject_type = $3
+            AND subject_id = $4
+            AND state = 'HELD'
+            AND expires_at <= $1`,
+        [input.createdAt, ctx.merchantId, input.subjectType, input.subjectId],
+      );
+
       const sumResult = await client.query<{ used: string }>(
         `SELECT COALESCE(SUM(quantity), 0) AS used
            FROM "reservations"
