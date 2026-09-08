@@ -55,8 +55,13 @@ before committing to a window: if another run is already active or there's no
 current card, it prints one line and exits — the window stays open (harmless,
 just an idle prompt) rather than closing itself, since closing it
 programmatically risks touching windows that aren't ours. If there's a real
-card, it runs `python3 scripts/run_build_loop.py --max-cards 6` in that same
-window so you can watch it live.
+card, it runs `python3 scripts/run_build_loop.py --max-cards 10` in that same
+window so you can watch it live. (Validated 2026-09-08 against D002-D006's
+real commit timestamps: 2.8-8.7 min/card, avg 5.6 min — 10 cards fits inside
+an hour at the average pace. Re-check this once harder phases start; Phase 0
+toolchain cards are the lightest in the whole plan. An hourly firing that
+lands mid-run is a safe no-op via the PID lock, not a double-execution risk,
+so an occasional overrun past the hour costs nothing but wall-clock time.)
 
 Useful commands:
 

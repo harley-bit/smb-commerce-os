@@ -24,5 +24,5 @@ if [[ ! "$next_card" =~ ^D[0-9]{3}$ ]]; then
   exit 0
 fi
 
-echo "Current card: $next_card -- running up to 6 cards."
-exec python3 scripts/run_build_loop.py --max-cards 6
+echo "Current card: $next_card -- running up to 10 cards."
+exec python3 scripts/run_build_loop.py --max-cards 10
