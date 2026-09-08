@@ -9,6 +9,12 @@ export { createPgConnection } from "./pg-connection.js";
 export { runSqliteMigrations, runPgMigrations } from "./migrate.js";
 export { TenantScopedRepository, type RepositoryMethod } from "./tenancy/TenantScopedRepository.js";
 export {
+  listTenantScopedMethods,
+  findIsolationCoverageGaps,
+  type RepositoryMethodRef,
+  type IsolationCoverageGap,
+} from "./tenancy/isolation-coverage.js";
+export {
   MerchantRepository,
   type Merchant,
   type CreateMerchantInput,
