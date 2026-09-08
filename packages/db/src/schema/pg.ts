@@ -163,3 +163,88 @@ export const listingVariants = pgTable(
     ),
   ],
 );
+
+/**
+ * `docs/design/03` "Inventory — products and rentals". One row per tracked
+ * unit. Rental assets are always `SERIALIZED` (one row per physical item);
+ * `FUNGIBLE` units represent an untracked-per-item stock pool for a
+ * variant/location pair. Deliberately has no stock/quantity column — current
+ * stock is always derived from summing `inventory_movements`, never stored.
+ */
+export const inventoryUnits = pgTable(
+  "inventory_units",
+  {
+    id: uuid("id").primaryKey(),
+    merchantId: uuid("merchant_id")
+      .notNull()
+      .references(() => merchants.id),
+    variantId: uuid("variant_id")
+      .notNull()
+      .references(() => listingVariants.id),
+    locationId: uuid("location_id")
+      .notNull()
+      .references(() => locations.id),
+    unitCode: text("unit_code").notNull(),
+    trackingMode: text("tracking_mode", {
+      enum: ["SERIALIZED", "FUNGIBLE"],
+    }).notNull(),
+    status: text("status", {
+      enum: ["AVAILABLE", "SOLD", "MAINTENANCE", "RETIRED", "LOST"],
+    }).notNull(),
+    acquisitionCostMinor: integer("acquisition_cost_minor"),
+    acquiredAt: timestamp("acquired_at", { withTimezone: true }),
+    expectedLifeMonths: integer("expected_life_months"),
+    conditionGrade: text("condition_grade"),
+    retiredAt: timestamp("retired_at", { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex("inventory_units_merchant_unit_code_unique").on(
+      table.merchantId,
+      table.unitCode,
+    ),
+  ],
+);
+
+/**
+ * `docs/design/03` "Inventory — products and rentals". **Append-only** —
+ * current stock is `SUM(quantity)` grouped by variant (and, for serialized
+ * units, by unit), never a mutable counter. `quantity` is signed: inbound
+ * kinds (`RECEIPT`, `RENTAL_IN`) are positive, outbound kinds (`SALE`,
+ * `RENTAL_OUT`, `WRITE_OFF`) are negative, `ADJUSTMENT`/`TRANSFER` carry
+ * whatever sign corrects the count. `unit_id` is nullable — `FUNGIBLE` stock
+ * moves at the variant/location level with no single unit to reference.
+ * `order_line_id` is a plain reference (not a FK) — `order_lines` doesn't
+ * exist yet; it lands in a later phase. `actor_user_id` and `note` are
+ * mandatory: every movement is auditable to a person and a reason.
+ */
+export const inventoryMovements = pgTable("inventory_movements", {
+  id: uuid("id").primaryKey(),
+  merchantId: uuid("merchant_id")
+    .notNull()
+    .references(() => merchants.id),
+  variantId: uuid("variant_id")
+    .notNull()
+    .references(() => listingVariants.id),
+  unitId: uuid("unit_id").references(() => inventoryUnits.id),
+  locationId: uuid("location_id")
+    .notNull()
+    .references(() => locations.id),
+  kind: text("kind", {
+    enum: [
+      "RECEIPT",
+      "SALE",
+      "RENTAL_OUT",
+      "RENTAL_IN",
+      "ADJUSTMENT",
+      "TRANSFER",
+      "WRITE_OFF",
+    ],
+  }).notNull(),
+  quantity: integer("quantity").notNull(),
+  orderLineId: uuid("order_line_id"),
+  occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
+  actorUserId: uuid("actor_user_id")
+    .notNull()
+    .references(() => users.id),
+  note: text("note").notNull(),
+});
