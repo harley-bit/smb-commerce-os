@@ -2,6 +2,7 @@ export * from "./auth/AuthProvider.js";
 export * from "./tenancy/TenantContext.js";
 export * from "./utils/uuid.js";
 export * from "./utils/money.js";
+export * from "./utils/lineTotal.js";
 export * from "./utils/time.js";
 
 export function workspaceGraphMarker(): string {
