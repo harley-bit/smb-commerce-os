@@ -75,6 +75,7 @@ describe("CheckoutPaymentService", () => {
       orderId: cartId,
       connectedAccountId: "acct_merchant_a",
       takeRateBasisPoints: 250, // 2.5%
+      idempotencyKey: "idem-1",
     });
 
     expect(result.amountMinor).toBe(10_000);
@@ -91,6 +92,40 @@ describe("CheckoutPaymentService", () => {
     expect(recorded?.connectedAccountId).toBe("acct_merchant_a");
   });
 
+  it("D090 acceptance criteria: a replayed request with the same Idempotency-Key returns the original result, no duplicate PaymentIntent", async () => {
+    const ctx = createTenantContext(merchantA);
+    const cartId = cartService.createCart(ctx, { customerUserId: userId, currency: "USD" });
+    cartService.addProductLine(ctx, { cartId, variantId: variantA, quantity: 1 });
+
+    const input = {
+      orderId: cartId,
+      connectedAccountId: "acct_merchant_a",
+      takeRateBasisPoints: 250,
+      idempotencyKey: "idem-retry-1",
+    };
+
+    const first = await service.createCheckoutIntent(ctx, input);
+    const replay = await service.createCheckoutIntent(ctx, input);
+
+    expect(replay).toEqual(first);
+    expect(provider.intentCount()).toBe(1);
+  });
+
+  it("D090 security check: rejects checkout with a missing Idempotency-Key", async () => {
+    const ctx = createTenantContext(merchantA);
+    const cartId = cartService.createCart(ctx, { customerUserId: userId, currency: "USD" });
+    cartService.addProductLine(ctx, { cartId, variantId: variantA, quantity: 1 });
+
+    await expect(
+      service.createCheckoutIntent(ctx, {
+        orderId: cartId,
+        connectedAccountId: "acct_merchant_a",
+        takeRateBasisPoints: 250,
+        idempotencyKey: "",
+      }),
+    ).rejects.toThrow(/idempotency/i);
+  });
+
   it("computes the amount from the server-recorded order total, not a client-supplied amount", async () => {
     const ctx = createTenantContext(merchantA);
     const cartId = cartService.createCart(ctx, { customerUserId: userId, currency: "USD" });
@@ -100,6 +135,7 @@ describe("CheckoutPaymentService", () => {
       orderId: cartId,
       connectedAccountId: "acct_merchant_a",
       takeRateBasisPoints: 250,
+      idempotencyKey: "idem-tampered",
       // A malicious/buggy caller attempting to override the charge amount.
       amountMinor: 1,
     };
@@ -118,6 +154,7 @@ describe("CheckoutPaymentService", () => {
         orderId: cartId,
         connectedAccountId: "acct_merchant_a",
         takeRateBasisPoints: 250,
+        idempotencyKey: "idem-empty-cart",
       }),
     ).rejects.toThrow(/empty|zero|total/i);
   });
@@ -133,6 +170,7 @@ describe("CheckoutPaymentService", () => {
         orderId: cartId,
         connectedAccountId: "acct_merchant_a",
         takeRateBasisPoints: 250,
+        idempotencyKey: "idem-wrong-status",
       }),
     ).rejects.toThrow(/CART/);
   });
@@ -145,6 +183,7 @@ describe("CheckoutPaymentService", () => {
         orderId: "does-not-exist",
         connectedAccountId: "acct_merchant_a",
         takeRateBasisPoints: 250,
+        idempotencyKey: "idem-nonexistent-order",
       }),
     ).rejects.toThrow(/not found/);
   });
@@ -172,6 +211,7 @@ describe("CheckoutPaymentService", () => {
         orderId: cartId,
         connectedAccountId: "acct_merchant_b",
         takeRateBasisPoints: 250,
+        idempotencyKey: "idem-cross-tenant",
       }),
     ).rejects.toThrow(/not found/);
   });

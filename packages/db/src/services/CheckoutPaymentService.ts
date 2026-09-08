@@ -5,6 +5,16 @@ export interface CreateCheckoutIntentInput {
   readonly orderId: string;
   readonly connectedAccountId: string;
   readonly takeRateBasisPoints: number;
+  /** `docs/cards/D090.md` security check — required, not optional. */
+  readonly idempotencyKey: string;
+}
+
+/** `docs/cards/D090.md` — same shape as `BookingService`'s error of the same name. */
+export class MissingIdempotencyKeyError extends Error {
+  constructor() {
+    super("Idempotency-Key is required to create a checkout PaymentIntent");
+    this.name = "MissingIdempotencyKeyError";
+  }
 }
 
 export interface CheckoutIntentResult {
@@ -41,6 +51,10 @@ export class CheckoutPaymentService {
   ) {}
 
   async createCheckoutIntent(ctx: TenantContext, input: CreateCheckoutIntentInput): Promise<CheckoutIntentResult> {
+    if (!input.idempotencyKey) {
+      throw new MissingIdempotencyKeyError();
+    }
+
     const order = this.orderRepo.findById(ctx, input.orderId);
     if (!order) {
       throw new Error(`Order not found: ${input.orderId}`);
@@ -61,6 +75,7 @@ export class CheckoutPaymentService {
       currency: orderTotal.currency,
       connectedAccountId: input.connectedAccountId,
       applicationFeeAmountMinor: split.applicationFee.minorUnits,
+      idempotencyKey: input.idempotencyKey,
     });
 
     return {
