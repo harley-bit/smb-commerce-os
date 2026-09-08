@@ -20,3 +20,13 @@ export {
   type CreateLocationInput,
   type UpdateLocationInput,
 } from "./repositories/LocationRepository.js";
+export {
+  UserRepository,
+  type User,
+  type CreateUserInput,
+} from "./repositories/UserRepository.js";
+export {
+  MerchantUserRepository,
+  type MerchantUser,
+  type MerchantUserRole,
+} from "./repositories/MerchantUserRepository.js";
