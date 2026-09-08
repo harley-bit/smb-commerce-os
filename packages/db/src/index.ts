@@ -89,6 +89,23 @@ export {
   type SellProductResult,
 } from "./services/ProductSaleService.js";
 export {
+  OrderRepository,
+  type Order,
+  type OrderStatus,
+  type OrderLine,
+  type OrderLineMode,
+  type CreateOrderInput,
+  type AddOrderLineInput,
+  type OrderTotals,
+} from "./repositories/OrderRepository.js";
+export {
+  CartService,
+  type CreateCartInput,
+  type AddProductLineInput,
+  type CartLineResult,
+  type CartTotals,
+} from "./services/CartService.js";
+export {
   AUDIT_LOG_GENESIS_HASH,
   computeRowHash,
   type AuditLogRowForHash,
