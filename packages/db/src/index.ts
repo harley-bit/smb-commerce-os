@@ -224,6 +224,13 @@ export {
   type ConditionMediaUploadGrant,
 } from "./services/ConditionMediaUploadService.js";
 export { HmacMediaUploadProvider, type HmacMediaUploadProviderConfig } from "./media/HmacMediaUploadProvider.js";
+export { SimulatedConnectAccountProvider } from "./payments/SimulatedConnectAccountProvider.js";
+export {
+  ConnectOnboardingService,
+  type StartOnboardingInput,
+  type StartOnboardingResult,
+  type ConnectAccountStatusResult,
+} from "./services/ConnectOnboardingService.js";
 export {
   ConditionMediaRepository,
   type ConditionMediaRecord,

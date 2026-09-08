@@ -19,6 +19,8 @@ export * from "./rentals/lateFeePolicy.js";
 export * from "./orders/cancellationPolicy.js";
 export * from "./payments/depositStateMachine.js";
 export * from "./payments/authorizationWindow.js";
+export * from "./payments/ConnectAccountProvider.js";
+export * from "./payments/connectAccountStatus.js";
 export * from "./media/mediaRetentionPolicy.js";
 
 export function workspaceGraphMarker(): string {
