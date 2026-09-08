@@ -99,8 +99,8 @@ export class DepositAuthorizationRepository extends TenantScopedRepository<typeo
     return this.transition(ctx, id, { type: "CAPTURE", amountMinor }, { capturedMinor: amountMinor });
   };
 
-  release: RepositoryMethod<[id: string, releasedAt: string], void> = (ctx, id, releasedAt) => {
-    this.transition(ctx, id, { type: "RELEASE" }, { releasedAt });
+  release: RepositoryMethod<[id: string, releasedAt: string], DepositState> = (ctx, id, releasedAt) => {
+    return this.transition(ctx, id, { type: "RELEASE" }, { releasedAt });
   };
 
   expire: RepositoryMethod<[id: string], void> = (ctx, id) => {

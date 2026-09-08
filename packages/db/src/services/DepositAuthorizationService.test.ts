@@ -189,6 +189,12 @@ describe("DepositAuthorizationService", () => {
         currency: "USD",
         expiresAt: "" as unknown as string,
       }),
+      captureManualCaptureHold: async () => {
+        throw new Error("not implemented");
+      },
+      releaseManualCaptureHold: async () => {
+        throw new Error("not implemented");
+      },
     };
     const brokenService = new DepositAuthorizationService(orderRepo, paymentRepo, depositRepo, brokenProvider);
 
@@ -215,5 +221,135 @@ describe("DepositAuthorizationService", () => {
         authorizedAt: "2026-09-08T00:00:00.000Z",
       }),
     ).rejects.toThrow();
+  });
+
+  async function placeHold(idempotencyKey: string) {
+    const ctx = createTenantContext(merchantA);
+    return service.placeHold(ctx, {
+      orderLineId: orderLineA,
+      connectedAccountId: "acct_123",
+      idempotencyKey,
+      authorizedAt: "2026-09-08T00:00:00.000Z",
+    });
+  }
+
+  it("captures the full amount via the provider and moves the deposit to CAPTURED", async () => {
+    const ctx = createTenantContext(merchantA);
+    const hold = await placeHold("cap-idem-1");
+
+    const result = await service.captureHold(ctx, {
+      depositAuthorizationId: hold.depositAuthorizationId,
+      amountMinor: 20000,
+      idempotencyKey: "cap-1",
+      capturedAt: "2026-09-09T00:00:00.000Z",
+    });
+
+    expect(result).toMatchObject({ state: "CAPTURED", capturedMinor: 20000, releasedRemainderMinor: 0 });
+    expect(depositRepo.findById(ctx, hold.depositAuthorizationId)).toMatchObject({
+      state: "CAPTURED",
+      capturedMinor: 20000,
+    });
+    expect(paymentRepo.findById(ctx, hold.paymentId)).toMatchObject({ status: "SUCCEEDED" });
+  });
+
+  it("a partial capture releases the remainder and lands in PARTIALLY_CAPTURED", async () => {
+    const ctx = createTenantContext(merchantA);
+    const hold = await placeHold("cap-idem-2");
+
+    const result = await service.captureHold(ctx, {
+      depositAuthorizationId: hold.depositAuthorizationId,
+      amountMinor: 12000,
+      idempotencyKey: "cap-2",
+      capturedAt: "2026-09-09T00:00:00.000Z",
+    });
+
+    expect(result).toMatchObject({ state: "PARTIALLY_CAPTURED", capturedMinor: 12000, releasedRemainderMinor: 8000 });
+    expect(depositRepo.findById(ctx, hold.depositAuthorizationId)).toMatchObject({
+      state: "PARTIALLY_CAPTURED",
+      capturedMinor: 12000,
+    });
+  });
+
+  it("rejects a second capture attempt end to end — provider is never called twice and state stays put", async () => {
+    const ctx = createTenantContext(merchantA);
+    const hold = await placeHold("cap-idem-3");
+
+    await service.captureHold(ctx, {
+      depositAuthorizationId: hold.depositAuthorizationId,
+      amountMinor: 20000,
+      idempotencyKey: "cap-3",
+      capturedAt: "2026-09-09T00:00:00.000Z",
+    });
+
+    await expect(
+      service.captureHold(ctx, {
+        depositAuthorizationId: hold.depositAuthorizationId,
+        amountMinor: 20000,
+        idempotencyKey: "cap-3b",
+        capturedAt: "2026-09-09T00:00:00.000Z",
+      }),
+    ).rejects.toThrow();
+
+    expect(depositRepo.findById(ctx, hold.depositAuthorizationId)).toMatchObject({
+      state: "CAPTURED",
+      capturedMinor: 20000,
+    });
+  });
+
+  it("releases a hold via the provider and moves the deposit to RELEASED", async () => {
+    const ctx = createTenantContext(merchantA);
+    const hold = await placeHold("cap-idem-4");
+
+    const state = await service.releaseHold(ctx, {
+      depositAuthorizationId: hold.depositAuthorizationId,
+      releasedAt: "2026-09-09T00:00:00.000Z",
+    });
+
+    expect(state).toBe("RELEASED");
+    expect(depositRepo.findById(ctx, hold.depositAuthorizationId)).toMatchObject({
+      state: "RELEASED",
+      releasedAt: "2026-09-09T00:00:00.000Z",
+    });
+  });
+
+  it("rejects capturing an already-released hold", async () => {
+    const ctx = createTenantContext(merchantA);
+    const hold = await placeHold("cap-idem-5");
+
+    await service.releaseHold(ctx, { depositAuthorizationId: hold.depositAuthorizationId, releasedAt: "2026-09-09T00:00:00.000Z" });
+
+    await expect(
+      service.captureHold(ctx, {
+        depositAuthorizationId: hold.depositAuthorizationId,
+        amountMinor: 20000,
+        idempotencyKey: "cap-6",
+        capturedAt: "2026-09-09T00:00:00.000Z",
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("does not let merchant B capture or release merchant A's deposit hold", async () => {
+    const ctxB = createTenantContext(merchantB);
+    const hold = await placeHold("cap-idem-7");
+
+    await expect(
+      service.captureHold(ctxB, {
+        depositAuthorizationId: hold.depositAuthorizationId,
+        amountMinor: 20000,
+        idempotencyKey: "cap-8",
+        capturedAt: "2026-09-09T00:00:00.000Z",
+      }),
+    ).rejects.toThrow();
+
+    await expect(
+      service.releaseHold(ctxB, {
+        depositAuthorizationId: hold.depositAuthorizationId,
+        releasedAt: "2026-09-09T00:00:00.000Z",
+      }),
+    ).rejects.toThrow();
+
+    expect(depositRepo.findById(createTenantContext(merchantA), hold.depositAuthorizationId)).toMatchObject({
+      state: "AUTHORIZED",
+    });
   });
 });

@@ -35,6 +35,39 @@ export interface DepositHoldResult {
   readonly expiresAt: string;
 }
 
+/**
+ * `docs/cards/D095.md` — capturing a manual-capture hold. Mirrors Stripe's
+ * own manual-capture semantics: capturing for less than the authorized
+ * amount ("partial capture") releases the remainder of the hold as part of
+ * the same provider call — there is no separate release step for the
+ * uncaptured balance, and this port models that by returning
+ * `releasedRemainderMinor` rather than leaving the caller to compute it.
+ */
+export interface CaptureDepositHoldInput {
+  readonly intentId: string;
+  readonly amountMinor: number;
+  readonly idempotencyKey: string;
+}
+
+export interface CaptureDepositHoldResult {
+  readonly intentId: string;
+  readonly capturedMinor: number;
+  /** Authorized amount minus `capturedMinor` — 0 for a full capture. */
+  readonly releasedRemainderMinor: number;
+}
+
+export interface ReleaseDepositHoldInput {
+  readonly intentId: string;
+}
+
 export interface DepositHoldProvider {
   createManualCaptureHold(input: CreateDepositHoldInput): Promise<DepositHoldResult>;
+  /**
+   * Throws `DepositHoldAlreadyResolvedError` if this `intentId` has already
+   * been captured or released — the provider-layer half of D095's
+   * single-capture security check.
+   */
+  captureManualCaptureHold(input: CaptureDepositHoldInput): Promise<CaptureDepositHoldResult>;
+  /** Same `DepositHoldAlreadyResolvedError` guard as `captureManualCaptureHold`. */
+  releaseManualCaptureHold(input: ReleaseDepositHoldInput): Promise<void>;
 }

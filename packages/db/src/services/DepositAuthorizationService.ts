@@ -1,4 +1,4 @@
-import type { DepositHoldProvider, TenantContext } from "@smb-os/domain";
+import type { DepositHoldProvider, DepositState, TenantContext } from "@smb-os/domain";
 import type { DepositAuthorizationRepository } from "../repositories/DepositAuthorizationRepository.js";
 import type { OrderRepository } from "../repositories/OrderRepository.js";
 import type { PaymentRepository } from "../repositories/PaymentRepository.js";
@@ -18,6 +18,25 @@ export interface PlaceDepositHoldResult {
   readonly amountMinor: number;
   readonly currency: string;
   readonly expiresAt: string;
+}
+
+export interface CaptureDepositHoldInput {
+  readonly depositAuthorizationId: string;
+  readonly amountMinor: number;
+  readonly idempotencyKey: string;
+  readonly capturedAt: string;
+}
+
+export interface CaptureDepositHoldResult {
+  readonly depositAuthorizationId: string;
+  readonly state: DepositState;
+  readonly capturedMinor: number;
+  readonly releasedRemainderMinor: number;
+}
+
+export interface ReleaseDepositHoldInput {
+  readonly depositAuthorizationId: string;
+  readonly releasedAt: string;
 }
 
 /** `docs/cards/D094.md` security check — a hold with no recorded expiry can never be found by the auto-release job. */
@@ -116,5 +135,61 @@ export class DepositAuthorizationService {
       currency: hold.currency,
       expiresAt: hold.expiresAt,
     };
+  }
+
+  /**
+   * `docs/cards/D095.md` — capture (full or partial). Calls the provider
+   * first: `DepositHoldProvider.captureManualCaptureHold` is the
+   * provider-layer half of the "single capture enforced at both domain and
+   * provider layers" security check, throwing `DepositHoldAlreadyResolvedError`
+   * on a repeat attempt before `depositRepo.capture` ever runs, so a second
+   * capture cannot leave a domain-layer write behind even though the
+   * provider call happens first. `depositRepo.capture` (D078) is the
+   * domain-layer half — it re-derives the next state via
+   * `applyDepositEvent` rather than trusting the provider's own arithmetic,
+   * so `PARTIALLY_CAPTURED` vs `CAPTURED` is still decided from
+   * `capturedMinor` against the row's own `amountMinor`.
+   */
+  async captureHold(ctx: TenantContext, input: CaptureDepositHoldInput): Promise<CaptureDepositHoldResult> {
+    const deposit = this.depositRepo.findById(ctx, input.depositAuthorizationId);
+    if (!deposit) {
+      throw new Error(`Deposit authorization not found: ${input.depositAuthorizationId}`);
+    }
+    const payment = this.paymentRepo.findById(ctx, deposit.paymentId);
+    if (!payment) {
+      throw new Error(`Payment not found: ${deposit.paymentId}`);
+    }
+
+    const result = await this.provider.captureManualCaptureHold({
+      intentId: payment.providerRef,
+      amountMinor: input.amountMinor,
+      idempotencyKey: input.idempotencyKey,
+    });
+
+    const state = this.depositRepo.capture(ctx, deposit.id, result.capturedMinor);
+    this.paymentRepo.applyProviderEvent(ctx, payment.id, { status: "SUCCEEDED", occurredAt: input.capturedAt });
+
+    return {
+      depositAuthorizationId: deposit.id,
+      state,
+      capturedMinor: result.capturedMinor,
+      releasedRemainderMinor: result.releasedRemainderMinor,
+    };
+  }
+
+  /** Same provider-first / domain-second ordering as `captureHold`, for a full release. */
+  async releaseHold(ctx: TenantContext, input: ReleaseDepositHoldInput): Promise<DepositState> {
+    const deposit = this.depositRepo.findById(ctx, input.depositAuthorizationId);
+    if (!deposit) {
+      throw new Error(`Deposit authorization not found: ${input.depositAuthorizationId}`);
+    }
+    const payment = this.paymentRepo.findById(ctx, deposit.paymentId);
+    if (!payment) {
+      throw new Error(`Payment not found: ${deposit.paymentId}`);
+    }
+
+    await this.provider.releaseManualCaptureHold({ intentId: payment.providerRef });
+
+    return this.depositRepo.release(ctx, deposit.id, input.releasedAt);
   }
 }

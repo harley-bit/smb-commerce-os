@@ -1,4 +1,4 @@
-import { AUTHORIZATION_WINDOW_CEILING_DAYS } from "@smb-os/domain";
+import { AUTHORIZATION_WINDOW_CEILING_DAYS, DepositHoldAlreadyResolvedError } from "@smb-os/domain";
 import { describe, expect, it } from "vitest";
 import { SimulatedDepositHoldProvider } from "./SimulatedDepositHoldProvider.js";
 
@@ -68,5 +68,101 @@ describe("SimulatedDepositHoldProvider", () => {
         idempotencyKey: "",
       }),
     ).rejects.toThrow("Idempotency-Key is required");
+  });
+
+  async function createHold(provider: SimulatedDepositHoldProvider, amountMinor = 20000) {
+    return provider.createManualCaptureHold({
+      orderLineId: "line-1",
+      amountMinor,
+      currency: "USD",
+      connectedAccountId: "acct_123",
+      idempotencyKey: `idem-${amountMinor}-${Math.random()}`,
+    });
+  }
+
+  it("captures the full authorized amount with no released remainder", async () => {
+    const provider = new SimulatedDepositHoldProvider();
+    const hold = await createHold(provider, 20000);
+
+    const result = await provider.captureManualCaptureHold({
+      intentId: hold.intentId,
+      amountMinor: 20000,
+      idempotencyKey: "cap-1",
+    });
+
+    expect(result).toMatchObject({ intentId: hold.intentId, capturedMinor: 20000, releasedRemainderMinor: 0 });
+  });
+
+  it("a partial capture releases the remainder of the hold in the same call", async () => {
+    const provider = new SimulatedDepositHoldProvider();
+    const hold = await createHold(provider, 20000);
+
+    const result = await provider.captureManualCaptureHold({
+      intentId: hold.intentId,
+      amountMinor: 12000,
+      idempotencyKey: "cap-2",
+    });
+
+    expect(result).toMatchObject({ capturedMinor: 12000, releasedRemainderMinor: 8000 });
+  });
+
+  it("rejects a second capture attempt on an already-captured intent at the provider layer", async () => {
+    const provider = new SimulatedDepositHoldProvider();
+    const hold = await createHold(provider, 20000);
+
+    await provider.captureManualCaptureHold({ intentId: hold.intentId, amountMinor: 20000, idempotencyKey: "cap-3" });
+
+    await expect(
+      provider.captureManualCaptureHold({ intentId: hold.intentId, amountMinor: 20000, idempotencyKey: "cap-4" }),
+    ).rejects.toThrow(DepositHoldAlreadyResolvedError);
+  });
+
+  it("rejects capturing an intent that was already released at the provider layer", async () => {
+    const provider = new SimulatedDepositHoldProvider();
+    const hold = await createHold(provider, 20000);
+
+    await provider.releaseManualCaptureHold({ intentId: hold.intentId });
+
+    await expect(
+      provider.captureManualCaptureHold({ intentId: hold.intentId, amountMinor: 20000, idempotencyKey: "cap-5" }),
+    ).rejects.toThrow(DepositHoldAlreadyResolvedError);
+  });
+
+  it("rejects a second release attempt on an already-resolved intent", async () => {
+    const provider = new SimulatedDepositHoldProvider();
+    const hold = await createHold(provider, 20000);
+
+    await provider.releaseManualCaptureHold({ intentId: hold.intentId });
+
+    await expect(provider.releaseManualCaptureHold({ intentId: hold.intentId })).rejects.toThrow(
+      DepositHoldAlreadyResolvedError,
+    );
+  });
+
+  it("rejects a capture amount above the authorized amount at the provider layer", async () => {
+    const provider = new SimulatedDepositHoldProvider();
+    const hold = await createHold(provider, 20000);
+
+    await expect(
+      provider.captureManualCaptureHold({ intentId: hold.intentId, amountMinor: 20001, idempotencyKey: "cap-6" }),
+    ).rejects.toThrow();
+  });
+
+  it("replays the original capture result for a repeated idempotency key instead of capturing twice", async () => {
+    const provider = new SimulatedDepositHoldProvider();
+    const hold = await createHold(provider, 20000);
+
+    const first = await provider.captureManualCaptureHold({
+      intentId: hold.intentId,
+      amountMinor: 12000,
+      idempotencyKey: "cap-7",
+    });
+    const second = await provider.captureManualCaptureHold({
+      intentId: hold.intentId,
+      amountMinor: 12000,
+      idempotencyKey: "cap-7",
+    });
+
+    expect(second).toEqual(first);
   });
 });
