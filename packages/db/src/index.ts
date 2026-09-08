@@ -261,6 +261,7 @@ export {
   type PaymentKind,
   type PaymentStatus,
   type CreatePaymentInput,
+  type ProviderStatusEvent,
 } from "./repositories/PaymentRepository.js";
 export { SimulatedPaymentIntentProvider } from "./payments/SimulatedPaymentIntentProvider.js";
 export {

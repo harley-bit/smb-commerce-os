@@ -490,6 +490,12 @@ export const payments = sqliteTable(
     }).notNull(),
     createdAt: text("created_at").notNull(),
     rawEventJson: text("raw_event_json"),
+    // `docs/cards/D093.md` — the provider event's own timestamp (Stripe's
+    // `created`) for whichever event last updated `status`. Lets a webhook
+    // handler ignore an out-of-order/stale delivery instead of regressing
+    // `status` backward — see `PaymentRepository.applyProviderEvent` and
+    // `@smb-os/domain`'s `applyOrderedEvent`.
+    lastEventAt: text("last_event_at"),
   },
   (table) => [
     uniqueIndex("payments_provider_provider_ref_unique").on(

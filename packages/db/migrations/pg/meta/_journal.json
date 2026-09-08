@@ -127,6 +127,13 @@
       "when": 1788906126680,
       "tag": "0017_motionless_power_man",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1788906637379,
+      "tag": "0018_faithful_surge",
+      "breakpoints": true
     }
   ]
 }

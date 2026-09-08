@@ -25,6 +25,7 @@ export * from "./payments/DuplicatePaymentReferenceError.js";
 export * from "./payments/DuplicateWebhookEventError.js";
 export * from "./payments/applicationFeeSplit.js";
 export * from "./payments/PaymentIntentProvider.js";
+export * from "./payments/orderedEventApplication.js";
 export * from "./media/mediaRetentionPolicy.js";
 
 export function workspaceGraphMarker(): string {

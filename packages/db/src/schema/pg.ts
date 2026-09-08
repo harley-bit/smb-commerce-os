@@ -491,6 +491,12 @@ export const payments = pgTable(
     }).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
     rawEventJson: text("raw_event_json"),
+    // `docs/cards/D093.md` — the provider event's own timestamp (Stripe's
+    // `created`) for whichever event last updated `status`. Lets a webhook
+    // handler ignore an out-of-order/stale delivery instead of regressing
+    // `status` backward — see `PaymentRepository.applyProviderEvent` and
+    // `@smb-os/domain`'s `applyOrderedEvent`.
+    lastEventAt: timestamp("last_event_at", { withTimezone: true }),
   },
   (table) => [
     uniqueIndex("payments_provider_provider_ref_unique").on(

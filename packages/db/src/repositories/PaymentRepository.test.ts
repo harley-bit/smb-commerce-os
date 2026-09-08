@@ -142,4 +142,69 @@ describe("PaymentRepository", () => {
     expect(payments.findById(ctxA, idA)).toMatchObject({ id: idA });
     expect(payments.findByProviderRef(ctxA, "STRIPE", "pi_isolated")).toMatchObject({ id: idA });
   });
+
+  describe("applyProviderEvent — D093 webhook ordering tolerance", () => {
+    it("applies a status update from a provider event and records its timestamp", () => {
+      const ctx = createTenantContext(merchantA);
+      const id = createPayment("pi_order_1");
+
+      payments.applyProviderEvent(ctx, id, { status: "REFUNDED", occurredAt: "2026-09-08T01:00:00.000Z" });
+
+      expect(payments.findById(ctx, id)).toMatchObject({
+        status: "REFUNDED",
+        lastEventAt: "2026-09-08T01:00:00.000Z",
+      });
+    });
+
+    it("ignores an out-of-order event delivered after a chronologically later one already applied", () => {
+      const ctx = createTenantContext(merchantA);
+      const id = createPayment("pi_order_2");
+
+      // A later event ("REFUNDED" at 01:00) is delivered first...
+      payments.applyProviderEvent(ctx, id, { status: "REFUNDED", occurredAt: "2026-09-08T01:00:00.000Z" });
+      // ...then an earlier event ("FAILED" at 00:30) arrives late. Arrival
+      // order must not be allowed to regress the already-applied state.
+      payments.applyProviderEvent(ctx, id, { status: "FAILED", occurredAt: "2026-09-08T00:30:00.000Z" });
+
+      expect(payments.findById(ctx, id)).toMatchObject({
+        status: "REFUNDED",
+        lastEventAt: "2026-09-08T01:00:00.000Z",
+      });
+    });
+
+    it("produces the same final state regardless of the order two events are delivered in", () => {
+      const ctx = createTenantContext(merchantA);
+      const inOrderId = createPayment("pi_order_3a");
+      const reversedId = createPayment("pi_order_3b");
+
+      const early = { status: "FAILED" as const, occurredAt: "2026-09-08T00:00:00.000Z" };
+      const late = { status: "REFUNDED" as const, occurredAt: "2026-09-08T00:10:00.000Z" };
+
+      payments.applyProviderEvent(ctx, inOrderId, early);
+      payments.applyProviderEvent(ctx, inOrderId, late);
+
+      payments.applyProviderEvent(ctx, reversedId, late);
+      payments.applyProviderEvent(ctx, reversedId, early);
+
+      const inOrderResult = payments.findById(ctx, inOrderId);
+      const reversedResult = payments.findById(ctx, reversedId);
+      expect(inOrderResult?.status).toBe(reversedResult?.status);
+      expect(inOrderResult?.lastEventAt).toBe(reversedResult?.lastEventAt);
+      expect(reversedResult).toMatchObject({ status: "REFUNDED", lastEventAt: late.occurredAt });
+    });
+
+    it("does not let merchant B apply a provider event to merchant A's payment", () => {
+      const ctxA = createTenantContext(merchantA);
+      const ctxB = createTenantContext(merchantB);
+      const id = createPayment("pi_order_isolated");
+
+      expect(() =>
+        payments.applyProviderEvent(ctxB, id, { status: "REFUNDED", occurredAt: "2026-09-08T01:00:00.000Z" }),
+      ).toThrow();
+
+      // Merchant A's own event still applies normally.
+      payments.applyProviderEvent(ctxA, id, { status: "REFUNDED", occurredAt: "2026-09-08T01:00:00.000Z" });
+      expect(payments.findById(ctxA, id)).toMatchObject({ status: "REFUNDED" });
+    });
+  });
 });
