@@ -14,8 +14,13 @@
  * this as the `Idempotency-Key` header on the underlying API call, so a
  * retried request replays the original PaymentIntent instead of minting a
  * second charge.
+ *
+ * `docs/cards/D098.md` — a `DECLINED` result carries the provider's raw
+ * `declineCode` (`./declineHandling.js`'s `DeclineCode`). That raw code is
+ * an internal signal only — it must never reach a customer-facing surface
+ * directly; callers map it through `mapDeclineToCustomerMessage` first.
  */
-export type PaymentIntentStatus = "REQUIRES_PAYMENT_METHOD" | "SUCCEEDED";
+export type PaymentIntentStatus = "REQUIRES_PAYMENT_METHOD" | "SUCCEEDED" | "DECLINED";
 
 export interface CreatePaymentIntentInput {
   readonly orderId: string;
@@ -34,6 +39,8 @@ export interface PaymentIntentResult {
   readonly currency: string;
   readonly connectedAccountId: string;
   readonly applicationFeeAmountMinor: number;
+  /** Only present when `status === "DECLINED"`. Never a customer-facing value — see above. */
+  readonly declineCode?: import("./declineHandling.js").DeclineCode;
 }
 
 export interface PaymentIntentProvider {

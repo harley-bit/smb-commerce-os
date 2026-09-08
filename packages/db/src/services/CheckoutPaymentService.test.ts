@@ -7,7 +7,7 @@ import { ListingRepository } from "../repositories/ListingRepository.js";
 import { VariantRepository } from "../repositories/VariantRepository.js";
 import { OrderRepository } from "../repositories/OrderRepository.js";
 import { CartService } from "./CartService.js";
-import { CheckoutPaymentService } from "./CheckoutPaymentService.js";
+import { CheckoutPaymentService, PaymentDeclinedError } from "./CheckoutPaymentService.js";
 import { SimulatedPaymentIntentProvider } from "../payments/SimulatedPaymentIntentProvider.js";
 
 describe("CheckoutPaymentService", () => {
@@ -186,6 +186,88 @@ describe("CheckoutPaymentService", () => {
         idempotencyKey: "idem-nonexistent-order",
       }),
     ).rejects.toThrow(/not found/);
+  });
+
+  it("D098 acceptance criteria: a decline produces an actionable, non-leaky PaymentDeclinedError", async () => {
+    const ctx = createTenantContext(merchantA);
+    const cartId = cartService.createCart(ctx, { customerUserId: userId, currency: "USD" });
+    cartService.addProductLine(ctx, { cartId, variantId: variantA, quantity: 1 });
+    provider.simulateDeclineForOrder(cartId, "insufficient_funds");
+
+    const attempt = service.createCheckoutIntent(ctx, {
+      orderId: cartId,
+      connectedAccountId: "acct_merchant_a",
+      takeRateBasisPoints: 250,
+      idempotencyKey: "idem-declined",
+    });
+
+    await expect(attempt).rejects.toBeInstanceOf(PaymentDeclinedError);
+    try {
+      await service.createCheckoutIntent(ctx, {
+        orderId: cartId,
+        connectedAccountId: "acct_merchant_a",
+        takeRateBasisPoints: 250,
+        idempotencyKey: "idem-declined-2",
+      });
+      expect.unreachable("expected a PaymentDeclinedError");
+    } catch (err) {
+      expect(err).toBeInstanceOf(PaymentDeclinedError);
+      const declined = err as PaymentDeclinedError;
+      expect(declined.retryableWithSameMethod).toBe(false);
+      expect(declined.message.toLowerCase()).toContain("insufficient funds");
+    }
+  });
+
+  it("D098 security check: a fraud-adjacent decline never reveals the real reason in the error text", async () => {
+    const ctx = createTenantContext(merchantA);
+    const cartId = cartService.createCart(ctx, { customerUserId: userId, currency: "USD" });
+    cartService.addProductLine(ctx, { cartId, variantId: variantA, quantity: 1 });
+    provider.simulateDeclineForOrder(cartId, "stolen_card");
+
+    try {
+      await service.createCheckoutIntent(ctx, {
+        orderId: cartId,
+        connectedAccountId: "acct_merchant_a",
+        takeRateBasisPoints: 250,
+        idempotencyKey: "idem-stolen",
+      });
+      expect.unreachable("expected a PaymentDeclinedError");
+    } catch (err) {
+      expect(err).toBeInstanceOf(PaymentDeclinedError);
+      const declined = err as PaymentDeclinedError;
+      expect(declined.message.toLowerCase()).not.toContain("stolen");
+      expect(declined.message.toLowerCase()).not.toContain("fraud");
+      expect(declined.retryableWithSameMethod).toBe(false);
+    }
+  });
+
+  it("D098: a transient processing-error decline is reported as retryable with the same method", async () => {
+    const ctx = createTenantContext(merchantA);
+    const cartId = cartService.createCart(ctx, { customerUserId: userId, currency: "USD" });
+    cartService.addProductLine(ctx, { cartId, variantId: variantA, quantity: 1 });
+    provider.simulateDeclineForOrder(cartId, "processing_error");
+
+    try {
+      await service.createCheckoutIntent(ctx, {
+        orderId: cartId,
+        connectedAccountId: "acct_merchant_a",
+        takeRateBasisPoints: 250,
+        idempotencyKey: "idem-processing-error",
+      });
+      expect.unreachable("expected a PaymentDeclinedError");
+    } catch (err) {
+      const declined = err as PaymentDeclinedError;
+      expect(declined.retryableWithSameMethod).toBe(true);
+    }
+
+    provider.clearDeclineForOrder(cartId);
+    const retried = await service.createCheckoutIntent(ctx, {
+      orderId: cartId,
+      connectedAccountId: "acct_merchant_a",
+      takeRateBasisPoints: 250,
+      idempotencyKey: "idem-processing-error-retry",
+    });
+    expect(retried.amountMinor).toBe(10_000);
   });
 
   it("does not leak an order from another tenant", async () => {

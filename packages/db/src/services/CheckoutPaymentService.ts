@@ -1,4 +1,10 @@
-import { computeApplicationFeeSplit, Money, type PaymentIntentProvider, type TenantContext } from "@smb-os/domain";
+import {
+  computeApplicationFeeSplit,
+  mapDeclineToCustomerMessage,
+  Money,
+  type PaymentIntentProvider,
+  type TenantContext,
+} from "@smb-os/domain";
 import type { OrderRepository } from "../repositories/OrderRepository.js";
 
 export interface CreateCheckoutIntentInput {
@@ -14,6 +20,27 @@ export class MissingIdempotencyKeyError extends Error {
   constructor() {
     super("Idempotency-Key is required to create a checkout PaymentIntent");
     this.name = "MissingIdempotencyKeyError";
+  }
+}
+
+/**
+ * `docs/cards/D098.md` — thrown when the provider declines the charge.
+ * `message` is always the output of `mapDeclineToCustomerMessage`, never the
+ * provider's raw decline code or any other detail about the payment method
+ * — this is the card's security check made structural: there is no field on
+ * this error a caller could accidentally surface that leaks more than the
+ * generic, non-leaky text. `retryableWithSameMethod` is the "actionable"
+ * half: it tells the caller whether prompting an immediate retry (same
+ * card) is worth it, or whether the customer should be steered to a
+ * different payment method instead.
+ */
+export class PaymentDeclinedError extends Error {
+  readonly retryableWithSameMethod: boolean;
+
+  constructor(customerMessage: string, retryableWithSameMethod: boolean) {
+    super(customerMessage);
+    this.name = "PaymentDeclinedError";
+    this.retryableWithSameMethod = retryableWithSameMethod;
   }
 }
 
@@ -77,6 +104,11 @@ export class CheckoutPaymentService {
       applicationFeeAmountMinor: split.applicationFee.minorUnits,
       idempotencyKey: input.idempotencyKey,
     });
+
+    if (intent.status === "DECLINED") {
+      const outcome = mapDeclineToCustomerMessage(intent.declineCode ?? "card_declined");
+      throw new PaymentDeclinedError(outcome.customerMessage, outcome.retryableWithSameMethod);
+    }
 
     return {
       intentId: intent.intentId,
