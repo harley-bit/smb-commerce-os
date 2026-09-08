@@ -1,0 +1,15 @@
+title = "gitleaks config for smb-commerce-os"
+
+[extend]
+useDefault = true
+
+# The default ruleset correctly flags this literal string wherever it
+# appears — it's the fake AWS-access-key-shaped fixture
+# packages/config/test/secret-scanning.test.ts uses to prove gitleaks
+# detection actually works, per D006. It is never a real credential.
+# Scoped to the exact literal value, not a path or a broader pattern, so a
+# real secret accidentally added anywhere (including that same test file)
+# still gets caught.
+[allowlist]
+description = "Known planted fixture value in packages/config/test/secret-scanning.test.ts — not a real credential"
+regexes = ['''AKIAABCDEFGHIJKLMNOP''']
