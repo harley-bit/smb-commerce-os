@@ -16,7 +16,7 @@ const localPlugin = { rules: { "no-raw-sql": noRawSql } };
 export function createConfig({ allowRawSql = false } = {}) {
   return [
     {
-      ignores: ["dist/**", "**/*.tsbuildinfo", ".turbo/**"],
+      ignores: ["dist/**", "**/*.tsbuildinfo", ".turbo/**", "coverage/**"],
     },
     {
       files: ["**/*.ts", "**/*.tsx"],
