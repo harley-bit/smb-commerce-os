@@ -6,7 +6,7 @@ Sequential, not date-locked. Under token-maxing execution, real elapsed time bet
 
 | Day | Phase | Epic | Task | Gate | Est. Duration | Status | Card | Log |
 |---|---|---|---|---|---|---|---|---|
-| <a id="d001"></a>D001 | P0 — Foundations & Security Baseline | Toolchain | Initialize monorepo |  | 1.0h | Not started | [card](docs/cards/D001.md) | [log](docs/logs/D001.md) (not yet run) |
+| <a id="d001"></a>D001 | P0 — Foundations & Security Baseline | Toolchain | Initialize monorepo |  | 1.0h | Done | [card](docs/cards/D001.md) | [log](docs/logs/D001.md) |
 | <a id="d002"></a>D002 | P0 — Foundations & Security Baseline | Toolchain | TypeScript strict configuration |  | 1.0h | Not started | [card](docs/cards/D002.md) | [log](docs/logs/D002.md) (not yet run) |
 | <a id="d003"></a>D003 | P0 — Foundations & Security Baseline | Toolchain | Lint and format rules |  | 1.0h | Not started | [card](docs/cards/D003.md) | [log](docs/logs/D003.md) (not yet run) |
 | <a id="d004"></a>D004 | P0 — Foundations & Security Baseline | Toolchain | Test harness |  | 1.0h | Not started | [card](docs/cards/D004.md) | [log](docs/logs/D004.md) (not yet run) |
