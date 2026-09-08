@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   check,
   date,
+  index,
   integer,
   pgTable,
   primaryKey,
@@ -314,3 +315,50 @@ export const availabilityExceptions = pgTable("availability_exceptions", {
   kind: text("kind", { enum: ["BLACKOUT", "EXTRA"] }).notNull(),
   note: text("note"),
 });
+
+/**
+ * `docs/design/03` "The reservation — services and rentals" — "the
+ * correctness centre of the system." `subjectType`/`subjectId` is a
+ * polymorphic reference (`RESOURCE` → `resources.id`, `INVENTORY_UNIT` →
+ * `inventory_units.id`); no single FK is possible across both, so it is
+ * enforced at the service layer, not the DB. **Blocking states are `HELD`,
+ * `CONFIRMED`, `IN_USE`** (`05`) — every overlap query and the hold sweeper
+ * filter on this set. This card is schema only: the two indexes below make
+ * the overlap query and the sweeper's blocking-state scan efficient, but
+ * the actual overlap-prevention guarantee (PG exclusion constraint / SQLite
+ * `BEGIN IMMEDIATE` serialization, invariant I2) is a later card's job —
+ * see `docs/design/05` C1 and gate G3.
+ */
+export const reservations = pgTable(
+  "reservations",
+  {
+    id: uuid("id").primaryKey(),
+    merchantId: uuid("merchant_id")
+      .notNull()
+      .references(() => merchants.id),
+    orderLineId: uuid("order_line_id"),
+    subjectType: text("subject_type", {
+      enum: ["RESOURCE", "INVENTORY_UNIT"],
+    }).notNull(),
+    subjectId: uuid("subject_id").notNull(),
+    startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
+    endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
+    quantity: integer("quantity").notNull(),
+    state: text("state", {
+      enum: ["HELD", "CONFIRMED", "IN_USE", "COMPLETED", "CANCELLED", "EXPIRED"],
+    }).notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+    releasedAt: timestamp("released_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("reservations_subject_interval_idx").on(
+      table.merchantId,
+      table.subjectType,
+      table.subjectId,
+      table.startsAt,
+      table.endsAt,
+    ),
+    index("reservations_state_expires_idx").on(table.state, table.expiresAt),
+  ],
+);
