@@ -8,7 +8,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "lint": "echo \"@smb-os/web: no lint rules configured yet\"",
+    "lint": "eslint .",
     "test": "echo \"@smb-os/web: no tests yet\"",
     "test:isolation": "echo \"@smb-os/web: no isolation suite yet\"",
     "dev": "echo \"@smb-os/web: no dev server yet\""
@@ -17,6 +17,8 @@
     "@smb-os/contracts": "workspace:*"
   },
   "devDependencies": {
+    "@smb-os/eslint-config": "workspace:*",
+    "eslint": "^10.10.0",
     "typescript": "^5.7.2"
   }
 }

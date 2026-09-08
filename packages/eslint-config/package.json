@@ -1,0 +1,27 @@
+{
+  "name": "@smb-os/eslint-config",
+  "private": true,
+  "version": "0.0.0",
+  "license": "UNLICENSED",
+  "type": "module",
+  "main": "./index.js",
+  "files": [
+    "index.js",
+    "rules"
+  ],
+  "scripts": {
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:isolation": "echo \"@smb-os/eslint-config: no isolation suite yet\""
+  },
+  "dependencies": {
+    "@typescript-eslint/eslint-plugin": "^8.70.0",
+    "@typescript-eslint/parser": "^8.70.0",
+    "eslint-config-prettier": "^10.1.8"
+  },
+  "devDependencies": {
+    "eslint": "^10.10.0",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

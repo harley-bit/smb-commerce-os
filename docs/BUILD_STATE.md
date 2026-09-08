@@ -1,6 +1,6 @@
 # Build State
 
-**Last updated:** 2026-09-07 (D002 done)
+**Last updated:** 2026-09-07 (D003 done)
 **Execution model:** token-maxing — sessions run back-to-back until the account's usage limit is hit, then resume automatically once it refreshes (see `docs/design/12_daily_build_protocol.md` and the "Token-maxing execution" note in `CLAUDE.md`). Elapsed calendar time is therefore driven by usage-limit cadence, not a fixed days-per-week number. **Day ID is the only reliable sequence marker — do not infer progress from dates.**
 **Projected MVP gate (G7):** provisional only until real throughput is observed over the first ~10 cards. See `docs/BUILD_CALENDAR.md` for the full sequence.
 **Per-card duration estimates:** every row in `docs/BUILD_CALENDAR.md`, the xlsx dashboard, and each `docs/cards/{DAY_ID}.md` now carries an "Est. Duration" figure — a heuristic planning estimate (by phase, weighted up for concurrency/deposit/payment/gate-review complexity) for an AI-assisted session, not a human day and not a commitment. Sum across the original 176 cards is ~473.5 hours; Phase 11 (`D177`–`D197`, added 2026-09-08) adds ~45.5 hours across 21 cards, for a running total of ~519 hours across 197 cards. **Treat this the same as the projected MVP gate date: recalibrate against real `docs/logs/` actual-effort data once cards start closing, don't defend the original number.**
@@ -8,12 +8,12 @@
 
 ## Current phase
 
-**Phase 0 — Foundations and security baseline** (`D001`–`D012`). Underway — D001 and D002 done; pnpm workspace + Turborepo scaffolding is live with a regression-tested strict TypeScript baseline.
+**Phase 0 — Foundations and security baseline** (`D001`–`D012`). Underway — D001, D002, and D003 done; pnpm workspace + Turborepo scaffolding is live with a regression-tested strict TypeScript baseline, plus repo-wide ESLint + Prettier with a custom rule banning raw SQL outside `packages/db`.
 
 ## Current card
 
-**Next up: [`D003`](../docs/cards/D003.md) — Lint and format rules.**
-Full task, deliverable, acceptance criteria, and security check are in the card file itself — that file, not this one, is the source of truth for what D003 actually requires. This file only tracks _where we are_, not _what to do_.
+**Next up: [`D004`](../docs/cards/D004.md) — Test harness.**
+Full task, deliverable, acceptance criteria, and security check are in the card file itself — that file, not this one, is the source of truth for what D004 actually requires. This file only tracks _where we are_, not _what to do_.
 
 ## Open decisions (blocking, from `docs/design/00_README.md`)
 
@@ -28,13 +28,15 @@ Full task, deliverable, acceptance criteria, and security check are in the card 
 
 ## Carried-over notes for next session
 
-- `docs/implementation_calendar/build_calendar.xlsx` — human-facing dashboard, hyperlinked to `docs/cards/{DAY_ID}.md` / `docs/logs/{DAY_ID}.md`. Run `python3 scripts/sync_calendar_xlsx.py` after closing out a card to push Status/Notes without touching its hyperlinks — **not yet run for D001 or D002, do this at the start of the D003 session** (or now, if resuming this one).
+- `docs/implementation_calendar/build_calendar.xlsx` — human-facing dashboard, hyperlinked to `docs/cards/{DAY_ID}.md` / `docs/logs/{DAY_ID}.md`. Run `python3 scripts/sync_calendar_xlsx.py` after closing out a card to push Status/Notes without touching its hyperlinks — **still not run for D001, D002, or D003; run it at the start of the D004 session** (or now, if resuming this one).
 - `pnpm` (12.3.4, via the system's node/corepack toolchain) and `turbo` are working; `pnpm-workspace.yaml` has an `allowBuilds: { esbuild: true }` entry approving vitest's transitive esbuild postinstall script — expect similar prompts (`pnpm approve-builds`) for other future transitive deps with install scripts.
-- Root scaffolding uses scope `@smb-os/*` for internal packages (`@smb-os/domain`, `@smb-os/db`, `@smb-os/contracts`, `@smb-os/config`, `@smb-os/api`, `@smb-os/web`) — no prior convention existed, this is the one now in use.
-- `lint` and `test:isolation` are stub `echo` scripts in every package except the two with real Vitest suites (`packages/domain`, `packages/config`). D003 (lint/format) and D004 (test harness) are what actually wire these up — don't mistake the current green gate for those cards already being done.
+- Root scaffolding uses scope `@smb-os/*` for internal packages (`@smb-os/domain`, `@smb-os/db`, `@smb-os/contracts`, `@smb-os/config`, `@smb-os/api`, `@smb-os/web`), plus a new tooling-only package `@smb-os/eslint-config` added in D003 (not part of the runtime dependency graph, just shared lint config).
+- `test:isolation` is still a stub `echo` script in every package — D004 (test harness) is what wires that up for real. `lint` is now real everywhere (D003): flat ESLint 10 config from `@smb-os/eslint-config`, including a custom `local/no-raw-sql` rule (error everywhere except `packages/db`, where raw SQL is the job). Don't mistake the green gate for D004 already being done.
 - `packages/config/tsconfig.base.json` (`strict: true`, `noUncheckedIndexedAccess`, `noImplicitOverride`) is now regression-tested by `packages/config/test/strict-config.test.ts` — if that test ever fails, someone weakened the shared strict baseline, not a fluke.
+- Careful with repo-wide `prettier --write .` — D003 accidentally ran it unscoped and it reformatted ~25 out-of-scope Markdown files (design docs, ADRs, this file, `CLAUDE.md`) before being caught and reverted via `git show HEAD:<path>` (plain `git checkout --` is blocked by the sandbox's destructive-git-op policy). Scope any future Prettier run to `apps/**`/`packages/**` paths.
 
 ## Log of completed cards
 
 - [D001](logs/D001.md) — Initialize monorepo. pnpm workspaces + Turborepo, `apps/{api,web}` + `packages/{domain,db,contracts,config}` per ADR-001, real internal dependency graph, `packages/domain` has its first Vitest test. Done.
 - [D002](logs/D002.md) — TypeScript strict configuration. Confirmed `pnpm typecheck` already green off D001's `strict: true` base config, then locked that guarantee in with a Vitest regression test (`packages/config/test/strict-config.test.ts`) that type-checks fixtures against the real shared tsconfig and would fail if strictness were ever weakened. Done.
+- [D003](logs/D003.md) — Lint and format rules. New `@smb-os/eslint-config` package with a flat ESLint 10 config and a custom `local/no-raw-sql` rule (error outside `packages/db`, off inside it), plus root Prettier config. Verified against a deliberate raw-SQL fixture in `apps/api` (lint failed as required, then reverted). Done.

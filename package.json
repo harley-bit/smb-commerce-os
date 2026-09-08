@@ -14,9 +14,12 @@
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "test:isolation": "turbo run test:isolation",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "dev": "turbo run dev"
   },
   "devDependencies": {
+    "prettier": "^3.9.6",
     "turbo": "^2.3.3",
     "typescript": "^5.7.2"
   }

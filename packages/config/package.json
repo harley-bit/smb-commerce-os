@@ -8,11 +8,13 @@
     "tsconfig.base.json"
   ],
   "scripts": {
-    "lint": "echo \"@smb-os/config: no lint rules configured yet\"",
+    "lint": "eslint .",
     "test": "vitest run",
     "test:isolation": "echo \"@smb-os/config: no isolation suite yet\""
   },
   "devDependencies": {
+    "@smb-os/eslint-config": "workspace:*",
+    "eslint": "^10.10.0",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"
   }

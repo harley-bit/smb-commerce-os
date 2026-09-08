@@ -1,0 +1,7 @@
+node_modules
+dist
+build
+.turbo
+*.tsbuildinfo
+pnpm-lock.yaml
+docs/implementation_calendar/build_calendar.xlsx

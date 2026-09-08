@@ -9,11 +9,13 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "lint": "echo \"@smb-os/contracts: no lint rules configured yet\"",
+    "lint": "eslint .",
     "test": "echo \"@smb-os/contracts: no tests yet\"",
     "test:isolation": "echo \"@smb-os/contracts: no isolation suite yet\""
   },
   "devDependencies": {
+    "@smb-os/eslint-config": "workspace:*",
+    "eslint": "^10.10.0",
     "typescript": "^5.7.2"
   }
 }
