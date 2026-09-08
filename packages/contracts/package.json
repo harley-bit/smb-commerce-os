@@ -1,0 +1,19 @@
+{
+  "name": "@smb-os/contracts",
+  "private": true,
+  "version": "0.0.0",
+  "license": "UNLICENSED",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "echo \"@smb-os/contracts: no lint rules configured yet\"",
+    "test": "echo \"@smb-os/contracts: no tests yet\"",
+    "test:isolation": "echo \"@smb-os/contracts: no isolation suite yet\""
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  }
+}

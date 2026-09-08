@@ -1,0 +1,24 @@
+{
+  "name": "@smb-os/api",
+  "private": true,
+  "version": "0.0.0",
+  "license": "UNLICENSED",
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "echo \"@smb-os/api: no lint rules configured yet\"",
+    "test": "echo \"@smb-os/api: no tests yet\"",
+    "test:isolation": "echo \"@smb-os/api: no isolation suite yet\"",
+    "dev": "echo \"@smb-os/api: no dev server yet\""
+  },
+  "dependencies": {
+    "@smb-os/contracts": "workspace:*",
+    "@smb-os/db": "workspace:*",
+    "@smb-os/domain": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  }
+}

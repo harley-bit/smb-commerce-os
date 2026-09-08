@@ -1,0 +1,23 @@
+{
+  "name": "smb-commerce-os",
+  "private": true,
+  "version": "0.0.0",
+  "description": "SMB Commerce OS — unified products, services, and rentals platform",
+  "license": "UNLICENSED",
+  "packageManager": "pnpm@12.3.4",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "test:isolation": "turbo run test:isolation",
+    "dev": "turbo run dev"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.2"
+  }
+}

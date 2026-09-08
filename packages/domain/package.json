@@ -1,0 +1,20 @@
+{
+  "name": "@smb-os/domain",
+  "private": true,
+  "version": "0.0.0",
+  "license": "UNLICENSED",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "echo \"@smb-os/domain: no lint rules configured yet\"",
+    "test": "vitest run",
+    "test:isolation": "echo \"@smb-os/domain: no isolation suite yet\""
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

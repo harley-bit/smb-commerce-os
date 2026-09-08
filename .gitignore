@@ -9,6 +9,7 @@ build/
 .DS_Store
 coverage/
 .turbo/
+*.tsbuildinfo
 __pycache__/
 scripts/loop_runs/
 scripts/.loop.lock

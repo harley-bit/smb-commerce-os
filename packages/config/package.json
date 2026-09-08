@@ -1,0 +1,9 @@
+{
+  "name": "@smb-os/config",
+  "private": true,
+  "version": "0.0.0",
+  "license": "UNLICENSED",
+  "files": [
+    "tsconfig.base.json"
+  ]
+}

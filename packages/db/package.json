@@ -1,0 +1,22 @@
+{
+  "name": "@smb-os/db",
+  "private": true,
+  "version": "0.0.0",
+  "license": "UNLICENSED",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "echo \"@smb-os/db: no lint rules configured yet\"",
+    "test": "echo \"@smb-os/db: no tests yet\"",
+    "test:isolation": "echo \"@smb-os/db: no isolation suite yet\""
+  },
+  "dependencies": {
+    "@smb-os/domain": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  }
+}

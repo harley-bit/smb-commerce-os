@@ -1,0 +1,22 @@
+{
+  "name": "@smb-os/web",
+  "private": true,
+  "version": "0.0.0",
+  "license": "UNLICENSED",
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "echo \"@smb-os/web: no lint rules configured yet\"",
+    "test": "echo \"@smb-os/web: no tests yet\"",
+    "test:isolation": "echo \"@smb-os/web: no isolation suite yet\"",
+    "dev": "echo \"@smb-os/web: no dev server yet\""
+  },
+  "dependencies": {
+    "@smb-os/contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  }
+}
