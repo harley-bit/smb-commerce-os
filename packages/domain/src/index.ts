@@ -1,3 +1,5 @@
+export * from "./auth/AuthProvider.js";
+
 export function workspaceGraphMarker(): string {
   return "@smb-os/domain";
 }

@@ -9,18 +9,24 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint .",
-    "test": "echo \"@smb-os/api: no tests yet\"",
+    "test": "vitest run --coverage",
     "test:isolation": "echo \"@smb-os/api: no isolation suite yet\"",
     "dev": "echo \"@smb-os/api: no dev server yet\""
   },
   "dependencies": {
+    "@fastify/cookie": "^11.1.2",
+    "@node-rs/argon2": "^2.2.0",
     "@smb-os/contracts": "workspace:*",
     "@smb-os/db": "workspace:*",
-    "@smb-os/domain": "workspace:*"
+    "@smb-os/domain": "workspace:*",
+    "fastify": "^5.12.3"
   },
   "devDependencies": {
     "@smb-os/eslint-config": "workspace:*",
+    "@types/node": "^26.4.1",
+    "@vitest/coverage-v8": "^3.2.7",
     "eslint": "^10.10.0",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vitest": "^3.2.7"
   }
 }
