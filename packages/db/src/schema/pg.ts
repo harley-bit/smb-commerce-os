@@ -591,20 +591,24 @@ export const conditionReports = pgTable("condition_reports", {
  * functionally evidence in a financial dispute, so its content hash is
  * recorded alongside the storage pointer rather than trusted implicitly.
  */
-export const conditionMedia = pgTable("condition_media", {
-  id: uuid("id").primaryKey(),
-  merchantId: uuid("merchant_id")
-    .notNull()
-    .references(() => merchants.id),
-  conditionReportId: uuid("condition_report_id")
-    .notNull()
-    .references(() => conditionReports.id),
-  storageKey: text("storage_key").notNull(),
-  contentType: text("content_type").notNull(),
-  bytes: integer("bytes").notNull(),
-  sha256: text("sha256").notNull(),
-  capturedAt: timestamp("captured_at", { withTimezone: true }).notNull(),
-});
+export const conditionMedia = pgTable(
+  "condition_media",
+  {
+    id: uuid("id").primaryKey(),
+    merchantId: uuid("merchant_id")
+      .notNull()
+      .references(() => merchants.id),
+    conditionReportId: uuid("condition_report_id")
+      .notNull()
+      .references(() => conditionReports.id),
+    storageKey: text("storage_key").notNull(),
+    contentType: text("content_type").notNull(),
+    bytes: integer("bytes").notNull(),
+    sha256: text("sha256").notNull(),
+    capturedAt: timestamp("captured_at", { withTimezone: true }).notNull(),
+  },
+  (table) => [uniqueIndex("condition_media_storage_key_unique").on(table.storageKey)],
+);
 
 /**
  * `docs/design/03` "Rental lifecycle". Financial record: never deleted, no

@@ -590,20 +590,24 @@ export const conditionReports = sqliteTable("condition_reports", {
  * functionally evidence in a financial dispute, so its content hash is
  * recorded alongside the storage pointer rather than trusted implicitly.
  */
-export const conditionMedia = sqliteTable("condition_media", {
-  id: text("id").primaryKey(),
-  merchantId: text("merchant_id")
-    .notNull()
-    .references(() => merchants.id),
-  conditionReportId: text("condition_report_id")
-    .notNull()
-    .references(() => conditionReports.id),
-  storageKey: text("storage_key").notNull(),
-  contentType: text("content_type").notNull(),
-  bytes: integer("bytes").notNull(),
-  sha256: text("sha256").notNull(),
-  capturedAt: text("captured_at").notNull(),
-});
+export const conditionMedia = sqliteTable(
+  "condition_media",
+  {
+    id: text("id").primaryKey(),
+    merchantId: text("merchant_id")
+      .notNull()
+      .references(() => merchants.id),
+    conditionReportId: text("condition_report_id")
+      .notNull()
+      .references(() => conditionReports.id),
+    storageKey: text("storage_key").notNull(),
+    contentType: text("content_type").notNull(),
+    bytes: integer("bytes").notNull(),
+    sha256: text("sha256").notNull(),
+    capturedAt: text("captured_at").notNull(),
+  },
+  (table) => [uniqueIndex("condition_media_storage_key_unique").on(table.storageKey)],
+);
 
 /**
  * `docs/design/03` "Rental lifecycle". Financial record: never deleted, no

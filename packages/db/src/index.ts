@@ -201,3 +201,14 @@ export {
   type ConditionMediaUploadGrant,
 } from "./services/ConditionMediaUploadService.js";
 export { HmacMediaUploadProvider, type HmacMediaUploadProviderConfig } from "./media/HmacMediaUploadProvider.js";
+export {
+  ConditionMediaRepository,
+  type ConditionMediaRecord,
+  type CreateConditionMediaInput,
+} from "./repositories/ConditionMediaRepository.js";
+export {
+  ConditionMediaConfirmService,
+  ConditionMediaHashMismatchError,
+  ConditionMediaStorageKeyReusedError,
+  type ConfirmConditionMediaUploadInput,
+} from "./services/ConditionMediaConfirmService.js";
