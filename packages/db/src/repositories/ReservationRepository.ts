@@ -1,5 +1,6 @@
 import { applyReservationEvent, generateUuidV7, type TenantContext } from "@smb-os/domain";
 import { and, eq, gt, lt, or, type SQLWrapper } from "drizzle-orm";
+import type { AvailabilityCache } from "../cache/AvailabilityCache.js";
 import type { Connection } from "../connection.js";
 import { reservations } from "../schema/sqlite.js";
 import { TenantScopedRepository, type RepositoryMethod } from "../tenancy/TenantScopedRepository.js";
@@ -72,12 +73,24 @@ function blockingStatePredicate(asOf: string): SQLWrapper {
  * (`merchant_id, subject_type, subject_id, starts_at, ends_at`).
  */
 export class ReservationRepository extends TenantScopedRepository<typeof reservations.merchantId> {
-  constructor(private readonly conn: Connection) {
+  /**
+   * `cache` is optional — every existing caller (tests, `BookingService`
+   * without an availability cache wired up) keeps working unchanged;
+   * `docs/cards/D060.md`'s acceptance criterion ("cache invalidated on any
+   * reservation write for that subject") only fires when a real
+   * `AvailabilityCache` is supplied.
+   */
+  constructor(
+    private readonly conn: Connection,
+    private readonly cache?: AvailabilityCache,
+  ) {
     super(reservations.merchantId);
   }
 
   create: RepositoryMethod<[input: CreateReservationInput], string> = (ctx, input) => {
-    return this.insertRow(ctx, input);
+    const id = this.insertRow(ctx, input);
+    this.cache?.invalidateSubject(ctx.merchantId, input.subjectId);
+    return id;
   };
 
   /**
@@ -145,7 +158,9 @@ export class ReservationRepository extends TenantScopedRepository<typeof reserva
       return this.insertRow(ctx, input);
     });
 
-    return attempt.immediate();
+    const id = attempt.immediate();
+    this.cache?.invalidateSubject(ctx.merchantId, input.subjectId);
+    return id;
   };
 
   findByIdempotencyKey: RepositoryMethod<[idempotencyKey: string], Reservation | undefined> = (
@@ -175,11 +190,13 @@ export class ReservationRepository extends TenantScopedRepository<typeof reserva
    * silently overwriting a terminal or already-advanced state.
    */
   confirm: RepositoryMethod<[id: string], void> = (ctx, id) => {
+    let subjectId = "";
     const attempt = this.conn.sqlite.transaction((): void => {
       const row = this.findById(ctx, id);
       if (!row) {
         throw new Error(`Reservation not found: ${id}`);
       }
+      subjectId = row.subjectId;
       const nextState = applyReservationEvent(row.state, { type: "CONFIRM" });
       this.conn.db
         .update(reservations)
@@ -189,6 +206,7 @@ export class ReservationRepository extends TenantScopedRepository<typeof reserva
     });
 
     attempt.immediate();
+    this.cache?.invalidateSubject(ctx.merchantId, subjectId);
   };
 
   private insertRow(ctx: TenantContext, input: CreateReservationInput): string {

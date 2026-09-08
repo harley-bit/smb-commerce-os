@@ -105,4 +105,23 @@ describe("MerchantRepository", () => {
     expect(repo.findOwn(ctxA)?.archivedAt).toBe("2026-09-09T00:00:00.000Z");
     expect(repo.findOwn(ctxB)?.archivedAt).toBeNull();
   });
+
+  describe("findBySlug() — public lookup, no TenantContext (D060)", () => {
+    it("resolves a merchant by slug without requiring the caller to already know its id", () => {
+      const ctx = createTenantContext(generateUuidV7());
+      repo.create(ctx, {
+        name: "Acme Rentals",
+        slug: "acme-rentals",
+        status: "ACTIVE",
+        defaultCurrency: "USD",
+        createdAt: "2026-09-08T00:00:00.000Z",
+      });
+
+      expect(repo.findBySlug("acme-rentals")).toMatchObject({ id: ctx.merchantId, slug: "acme-rentals" });
+    });
+
+    it("returns undefined for an unknown slug", () => {
+      expect(repo.findBySlug("does-not-exist")).toBeUndefined();
+    });
+  });
 });

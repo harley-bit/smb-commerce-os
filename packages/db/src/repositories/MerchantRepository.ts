@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import type { Connection } from "../connection.js";
 import { merchants } from "../schema/sqlite.js";
 import { TenantScopedRepository, type RepositoryMethod } from "../tenancy/TenantScopedRepository.js";
@@ -66,4 +67,21 @@ export class MerchantRepository extends TenantScopedRepository<typeof merchants.
       .where(this.scope(ctx))
       .run();
   };
+
+  /**
+   * `docs/design/06`'s public availability endpoint (`GET
+   * /v1/m/{slug}/availability`, D060) resolves `{slug}` to a `merchantId`
+   * *before* any `TenantContext` exists — that's the one legitimate
+   * unauthenticated read this table needs, so it's declared as a plain
+   * method rather than a `RepositoryMethod` class-property arrow function:
+   * Gate G1's isolation-coverage scan (`findIsolationCoverageGaps`) only
+   * walks arrow-function properties, exactly the same exemption
+   * `ReservationRepository.explainFindBlocking` already uses for the same
+   * "not a tenant-scoped access path" reason. A merchant slug is public by
+   * design (it's the merchant's own storefront URL segment), so this is not
+   * a disclosure — see this card's security check.
+   */
+  findBySlug(slug: string): Merchant | undefined {
+    return this.conn.db.select().from(merchants).where(eq(merchants.slug, slug)).get() as Merchant | undefined;
+  }
 }

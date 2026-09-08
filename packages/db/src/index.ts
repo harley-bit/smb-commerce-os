@@ -149,3 +149,9 @@ export {
   type UpdateAvailabilityExceptionInput,
 } from "./repositories/AvailabilityExceptionRepository.js";
 export { ResourceService } from "./services/ResourceService.js";
+export { AvailabilityCache } from "./cache/AvailabilityCache.js";
+export {
+  AvailabilityService,
+  AvailabilityRangeTooLargeError,
+  ResourceNotFoundError,
+} from "./services/AvailabilityService.js";

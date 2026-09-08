@@ -3,8 +3,9 @@ import type { Writable } from "node:stream";
 import cookie from "@fastify/cookie";
 import Fastify, { type FastifyError, type FastifyInstance } from "fastify";
 import type { AuthProvider } from "@smb-os/domain";
-import { createConnection as createDbConnection, type Connection } from "@smb-os/db";
+import { AvailabilityCache, createConnection as createDbConnection, type Connection } from "@smb-os/db";
 import { problemType, sendProblem } from "./problemDetails.js";
+import { registerAvailabilityRoutes } from "./routes/availability.js";
 import { registerListingRoutes } from "./routes/listings.js";
 import {
   AccountLockedError,
@@ -41,6 +42,9 @@ export interface BuildAppOptions {
   allowedOrigins?: readonly string[];
   loginRateLimit?: { limit: number; windowMs: number };
   resetRateLimit?: { limit: number; windowMs: number };
+  availabilityRateLimit?: { limit: number; windowMs: number };
+  /** Injectable for tests that need to write a reservation and observe cache invalidation through the same cache the route reads. */
+  availabilityCache?: AvailabilityCache;
   onResetTokenIssued?: ResetTokenNotifier;
   /** Test-only hook for asserting on structured log output; production uses stdout. */
   loggerStream?: Writable | { write: (chunk: string) => void };
@@ -122,6 +126,9 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
 
   const connection = options.connection ?? createDbConnection(":memory:");
   registerListingRoutes(app, connection);
+  registerAvailabilityRoutes(app, connection, options.availabilityCache ?? new AvailabilityCache(), {
+    rateLimit: options.availabilityRateLimit,
+  });
 
   app.addHook("onSend", async (request, reply, payload) => {
     void reply.header(REQUEST_ID_HEADER, request.id);
