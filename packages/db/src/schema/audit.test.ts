@@ -90,9 +90,8 @@ describe.skipIf(!process.env.DATABASE_URL)("audit_log table (real PostgreSQL)", 
     const connection = createPgConnection(connectionString);
 
     try {
-      await connection.pool.query(
-        'DROP TABLE IF EXISTS "audit_log", "damage_claims", "condition_media", "condition_reports", "fulfillment_events", "deposit_authorizations", "payments", "order_lines", "orders", "reservations", "availability_exceptions", "availability_rules", "resources", "inventory_movements", "inventory_units", "listing_variants", "listings", "locations", "merchant_users", "users", "merchants", "migration_smoke_test" CASCADE',
-      );
+      await connection.pool.query('DROP SCHEMA IF EXISTS "public" CASCADE');
+      await connection.pool.query('CREATE SCHEMA "public"');
       await connection.pool.query('DROP SCHEMA IF EXISTS "drizzle" CASCADE');
 
       await runPgMigrations(connection);

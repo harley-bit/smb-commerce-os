@@ -43,13 +43,15 @@ describe.skipIf(!process.env.DATABASE_URL)(
       const connection = createPgConnection(connectionString);
 
       try {
-        await connection.pool.query(
-          'DROP TABLE IF EXISTS "locations", "merchant_users", "users", "merchants", "migration_smoke_test" CASCADE',
-        );
-        // drizzle-orm/node-postgres's migrator tracks applied migrations in
-        // a "drizzle"."__drizzle_migrations" table, not the public schema —
-        // dropping the whole schema is what actually resets migration state
-        // between test runs.
+        // Reset both schemas the migrator can touch: "public" holds every
+        // table the migrations create (dropping the whole schema, not an
+        // enumerated table list, is what keeps this correct regardless of
+        // which other test files in this package have already run and
+        // created tables ahead of this one), and "drizzle"."__drizzle_migrations"
+        // tracks which migrations have already been applied — dropping it is
+        // what actually resets migration state between test runs.
+        await connection.pool.query('DROP SCHEMA IF EXISTS "public" CASCADE');
+        await connection.pool.query('CREATE SCHEMA "public"');
         await connection.pool.query('DROP SCHEMA IF EXISTS "drizzle" CASCADE');
 
         await runPgMigrations(connection);
