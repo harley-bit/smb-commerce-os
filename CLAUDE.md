@@ -46,6 +46,8 @@ Rules specific to this mode:
 - **Never mark a gate (G0–G10) passed without its acceptance test actually passing in CI.** Gates are not skippable to keep the loop moving.
 - If genuinely blocked (an external decision, an account not yet provisioned), record the blocker in the log and in `BUILD_STATE.md`, and move to the next unblocked card in the same phase rather than idling — per `docs/design/12_daily_build_protocol.md`.
 
+**Automated driver:** `scripts/run_build_loop.py` is the actual mechanism that runs this loop unattended (by hand or scheduled via launchd/cron — see `scripts/BUILD_LOOP.md`). It does not reimplement this protocol; it invokes `claude -p` per card and checks that `BUILD_STATE.md`'s current-card pointer actually advanced afterward, stopping cleanly on a usage-limit signal, a stalled/Carried card, or an unclean working tree. If you are executing a card because that script invoked you, follow this file's protocol exactly as if a human had asked — the prompt it sends is just a pointer back to this section.
+
 ## The build protocol
 
 Full protocol: `docs/design/12_daily_build_protocol.md`. Summary:
