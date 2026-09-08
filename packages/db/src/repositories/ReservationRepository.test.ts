@@ -1097,4 +1097,159 @@ describe("ReservationRepository", () => {
       expect(repo.findById(ctxA, id)?.state).toEqual("CONFIRMED");
     });
   });
+
+  describe("markPickedUp() / markReturned() — docs/cards/D071.md", () => {
+    it("markPickedUp() transitions a CONFIRMED reservation to IN_USE", () => {
+      const ctx = createTenantContext(merchantA);
+      const id = repo.createGuarded(ctx, {
+        subjectType: "RESOURCE",
+        subjectId: resourceA,
+        startsAt: "2026-10-01T09:00:00.000Z",
+        endsAt: "2026-10-01T10:00:00.000Z",
+        quantity: 1,
+        state: "CONFIRMED",
+        createdAt: "2026-10-01T08:45:00.000Z",
+      });
+
+      repo.markPickedUp(ctx, id);
+
+      expect(repo.findById(ctx, id)?.state).toEqual("IN_USE");
+    });
+
+    it("markPickedUp() throws IllegalReservationTransitionError when the reservation is not CONFIRMED — no direct state write around the event path", () => {
+      const ctx = createTenantContext(merchantA);
+      const id = repo.createGuarded(ctx, {
+        subjectType: "RESOURCE",
+        subjectId: resourceA,
+        startsAt: "2026-10-01T09:00:00.000Z",
+        endsAt: "2026-10-01T10:00:00.000Z",
+        quantity: 1,
+        state: "HELD",
+        createdAt: "2026-10-01T08:45:00.000Z",
+      });
+
+      expect(() => repo.markPickedUp(ctx, id)).toThrow(IllegalReservationTransitionError);
+      expect(repo.findById(ctx, id)?.state).toEqual("HELD");
+    });
+
+    it("markPickedUp() is tenant-scoped — merchant B cannot pick up merchant A's reservation", () => {
+      const ctxA = createTenantContext(merchantA);
+      const ctxB = createTenantContext(merchantB);
+
+      const id = repo.createGuarded(ctxA, {
+        subjectType: "RESOURCE",
+        subjectId: resourceA,
+        startsAt: "2026-10-01T09:00:00.000Z",
+        endsAt: "2026-10-01T10:00:00.000Z",
+        quantity: 1,
+        state: "CONFIRMED",
+        createdAt: "2026-10-01T08:45:00.000Z",
+      });
+
+      expect(() => repo.markPickedUp(ctxB, id)).toThrow(`Reservation not found: ${id}`);
+      expect(repo.findById(ctxA, id)?.state).toEqual("CONFIRMED");
+    });
+
+    it("markReturned() transitions an IN_USE reservation to COMPLETED and stamps releasedAt", () => {
+      const ctx = createTenantContext(merchantA);
+      const id = repo.createGuarded(ctx, {
+        subjectType: "RESOURCE",
+        subjectId: resourceA,
+        startsAt: "2026-10-01T09:00:00.000Z",
+        endsAt: "2026-10-01T10:00:00.000Z",
+        quantity: 1,
+        state: "IN_USE",
+        createdAt: "2026-10-01T08:45:00.000Z",
+      });
+
+      repo.markReturned(ctx, id, "2026-10-01T10:05:00.000Z");
+
+      expect(repo.findById(ctx, id)).toMatchObject({
+        state: "COMPLETED",
+        releasedAt: "2026-10-01T10:05:00.000Z",
+      });
+    });
+
+    it("markReturned() throws IllegalReservationTransitionError when the reservation was never picked up — an out-of-order RETURNED event cannot skip IN_USE", () => {
+      const ctx = createTenantContext(merchantA);
+      const id = repo.createGuarded(ctx, {
+        subjectType: "RESOURCE",
+        subjectId: resourceA,
+        startsAt: "2026-10-01T09:00:00.000Z",
+        endsAt: "2026-10-01T10:00:00.000Z",
+        quantity: 1,
+        state: "CONFIRMED",
+        createdAt: "2026-10-01T08:45:00.000Z",
+      });
+
+      expect(() => repo.markReturned(ctx, id, "2026-10-01T10:05:00.000Z")).toThrow(
+        IllegalReservationTransitionError,
+      );
+      expect(repo.findById(ctx, id)?.state).toEqual("CONFIRMED");
+    });
+
+    it("markReturned() is tenant-scoped — merchant B cannot return merchant A's reservation", () => {
+      const ctxA = createTenantContext(merchantA);
+      const ctxB = createTenantContext(merchantB);
+
+      const id = repo.createGuarded(ctxA, {
+        subjectType: "RESOURCE",
+        subjectId: resourceA,
+        startsAt: "2026-10-01T09:00:00.000Z",
+        endsAt: "2026-10-01T10:00:00.000Z",
+        quantity: 1,
+        state: "IN_USE",
+        createdAt: "2026-10-01T08:45:00.000Z",
+      });
+
+      expect(() => repo.markReturned(ctxB, id, "2026-10-01T10:05:00.000Z")).toThrow(
+        `Reservation not found: ${id}`,
+      );
+      expect(repo.findById(ctxA, id)?.state).toEqual("IN_USE");
+    });
+  });
+
+  describe("findByOrderLineId() — docs/cards/D071.md", () => {
+    it("returns the reservation linked to an order line", () => {
+      const ctx = createTenantContext(merchantA);
+      const orderLineId = generateUuidV7();
+      const id = repo.createGuarded(ctx, {
+        orderLineId,
+        subjectType: "RESOURCE",
+        subjectId: resourceA,
+        startsAt: "2026-10-01T09:00:00.000Z",
+        endsAt: "2026-10-01T10:00:00.000Z",
+        quantity: 1,
+        state: "CONFIRMED",
+        createdAt: "2026-10-01T08:45:00.000Z",
+      });
+
+      expect(repo.findByOrderLineId(ctx, orderLineId)).toMatchObject({ id });
+    });
+
+    it("returns undefined when no reservation is linked to the order line", () => {
+      const ctx = createTenantContext(merchantA);
+
+      expect(repo.findByOrderLineId(ctx, generateUuidV7())).toBeUndefined();
+    });
+
+    it("is tenant-scoped — merchant B cannot look up merchant A's reservation by order line id", () => {
+      const ctxA = createTenantContext(merchantA);
+      const ctxB = createTenantContext(merchantB);
+      const orderLineId = generateUuidV7();
+
+      repo.createGuarded(ctxA, {
+        orderLineId,
+        subjectType: "RESOURCE",
+        subjectId: resourceA,
+        startsAt: "2026-10-01T09:00:00.000Z",
+        endsAt: "2026-10-01T10:00:00.000Z",
+        quantity: 1,
+        state: "CONFIRMED",
+        createdAt: "2026-10-01T08:45:00.000Z",
+      });
+
+      expect(repo.findByOrderLineId(ctxB, orderLineId)).toBeUndefined();
+    });
+  });
 });

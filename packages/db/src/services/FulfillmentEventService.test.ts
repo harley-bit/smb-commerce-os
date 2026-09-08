@@ -1,4 +1,4 @@
-import { createTenantContext, generateUuidV7 } from "@smb-os/domain";
+import { createTenantContext, generateUuidV7, IllegalReservationTransitionError } from "@smb-os/domain";
 import { beforeEach, describe, expect, it } from "vitest";
 import { createConnection, type Connection } from "../connection.js";
 import { runSqliteMigrations } from "../migrate.js";
@@ -7,6 +7,7 @@ import { ListingRepository } from "../repositories/ListingRepository.js";
 import { VariantRepository } from "../repositories/VariantRepository.js";
 import { OrderRepository } from "../repositories/OrderRepository.js";
 import { FulfillmentEventRepository } from "../repositories/FulfillmentEventRepository.js";
+import { ReservationRepository } from "../repositories/ReservationRepository.js";
 import {
   FulfillmentEventService,
   OrderLineNotFoundError,
@@ -21,6 +22,7 @@ describe("FulfillmentEventService", () => {
   let variantRepo: VariantRepository;
   let orderRepo: OrderRepository;
   let eventRepo: FulfillmentEventRepository;
+  let reservationRepo: ReservationRepository;
   let service: FulfillmentEventService;
   let merchantA: string;
   let merchantB: string;
@@ -34,7 +36,8 @@ describe("FulfillmentEventService", () => {
     variantRepo = new VariantRepository(connection);
     orderRepo = new OrderRepository(connection);
     eventRepo = new FulfillmentEventRepository(connection);
-    service = new FulfillmentEventService(orderRepo, eventRepo);
+    reservationRepo = new ReservationRepository(connection);
+    service = new FulfillmentEventService(orderRepo, eventRepo, reservationRepo);
 
     merchantA = generateUuidV7();
     merchantB = generateUuidV7();
@@ -171,5 +174,99 @@ describe("FulfillmentEventService", () => {
     ).toThrow(MissingFulfillmentNoteError);
 
     expect(eventRepo.listByOrderLine(ctx, orderLineA)).toEqual([]);
+  });
+
+  describe("reservation state transitions — docs/cards/D071.md", () => {
+    it("recordPickup() transitions the order line's linked reservation from CONFIRMED to IN_USE", () => {
+      const ctx = createTenantContext(merchantA);
+      const reservationId = reservationRepo.create(ctx, {
+        orderLineId: orderLineA,
+        subjectType: "INVENTORY_UNIT",
+        subjectId: generateUuidV7(),
+        startsAt: "2026-09-08T09:00:00.000Z",
+        endsAt: "2026-09-10T09:00:00.000Z",
+        quantity: 1,
+        state: "CONFIRMED",
+        createdAt: "2026-09-08T08:00:00.000Z",
+      });
+
+      service.recordPickup(ctx, "OWNER", {
+        orderLineId: orderLineA,
+        occurredAt: "2026-09-08T12:00:00.000Z",
+        actorUserId: userA,
+        note: "Customer picked up trailer at store.",
+      });
+
+      expect(reservationRepo.findById(ctx, reservationId)?.state).toEqual("IN_USE");
+    });
+
+    it("recordReturn() transitions the order line's linked reservation from IN_USE to COMPLETED", () => {
+      const ctx = createTenantContext(merchantA);
+      const reservationId = reservationRepo.create(ctx, {
+        orderLineId: orderLineA,
+        subjectType: "INVENTORY_UNIT",
+        subjectId: generateUuidV7(),
+        startsAt: "2026-09-08T09:00:00.000Z",
+        endsAt: "2026-09-10T09:00:00.000Z",
+        quantity: 1,
+        state: "IN_USE",
+        createdAt: "2026-09-08T08:00:00.000Z",
+      });
+
+      service.recordReturn(ctx, "OWNER", {
+        orderLineId: orderLineA,
+        occurredAt: "2026-09-10T12:00:00.000Z",
+        actorUserId: userA,
+        note: "Customer returned trailer.",
+      });
+
+      expect(reservationRepo.findById(ctx, reservationId)).toMatchObject({
+        state: "COMPLETED",
+        releasedAt: "2026-09-10T12:00:00.000Z",
+      });
+    });
+
+    it("recordReturn() rejects an order line whose reservation was never picked up — the service layer cannot skip straight to a direct state write", () => {
+      const ctx = createTenantContext(merchantA);
+      const reservationId = reservationRepo.create(ctx, {
+        orderLineId: orderLineA,
+        subjectType: "INVENTORY_UNIT",
+        subjectId: generateUuidV7(),
+        startsAt: "2026-09-08T09:00:00.000Z",
+        endsAt: "2026-09-10T09:00:00.000Z",
+        quantity: 1,
+        state: "CONFIRMED",
+        createdAt: "2026-09-08T08:00:00.000Z",
+      });
+
+      expect(() =>
+        service.recordReturn(ctx, "OWNER", {
+          orderLineId: orderLineA,
+          occurredAt: "2026-09-10T12:00:00.000Z",
+          actorUserId: userA,
+          note: "Attempted a return with no prior pickup.",
+        }),
+      ).toThrow(IllegalReservationTransitionError);
+
+      // Neither the reservation nor the event log moved — an illegal
+      // transition rejects the whole call, it doesn't record half of it.
+      expect(reservationRepo.findById(ctx, reservationId)?.state).toEqual("CONFIRMED");
+      expect(eventRepo.listByOrderLine(ctx, orderLineA)).toEqual([]);
+    });
+
+    it("recordPickup() is a no-op on reservation state when the order line has no linked reservation (e.g. a product sale line)", () => {
+      const ctx = createTenantContext(merchantA);
+
+      const id = service.recordPickup(ctx, "OWNER", {
+        orderLineId: orderLineA,
+        occurredAt: "2026-09-08T12:00:00.000Z",
+        actorUserId: userA,
+        note: "Picked up — no reservation linked to this line.",
+      });
+
+      expect(eventRepo.listByOrderLine(ctx, orderLineA)).toEqual([
+        expect.objectContaining({ id, kind: "PICKED_UP" }),
+      ]);
+    });
   });
 });

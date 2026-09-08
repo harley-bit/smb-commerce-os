@@ -2,6 +2,7 @@ import { assertCan, type TenantContext } from "@smb-os/domain";
 import type { MerchantUserRole } from "../repositories/MerchantUserRepository.js";
 import type { OrderRepository } from "../repositories/OrderRepository.js";
 import type { FulfillmentEventRepository } from "../repositories/FulfillmentEventRepository.js";
+import type { ReservationRepository } from "../repositories/ReservationRepository.js";
 
 export interface RecordFulfillmentEventArgs {
   orderLineId: string;
@@ -30,20 +31,30 @@ export class MissingFulfillmentNoteError extends Error {
 }
 
 /**
- * `docs/cards/D070.md` — PICKED_UP and RETURNED event handlers on top of
- * `FulfillmentEventRepository`'s append-only ledger. Authorization reuses
- * `bookings:manage`, the same action `RentalReservationService`/`BookingService`
- * already gate on — recording a pickup/return is an operational booking
- * action, not a catalog-management one.
+ * `docs/cards/D070.md`/`D071.md` — PICKED_UP and RETURNED event handlers on
+ * top of `FulfillmentEventRepository`'s append-only ledger. Authorization
+ * reuses `bookings:manage`, the same action `RentalReservationService`/
+ * `BookingService` already gate on — recording a pickup/return is an
+ * operational booking action, not a catalog-management action.
  *
- * Deliberately narrow scope: this card only records the events. It does not
- * transition the underlying reservation's state (`docs/cards/D071.md`,
- * "Event-driven state transitions", is the next card and owns that).
+ * `docs/cards/D071.md` — if the order line has a linked reservation
+ * (`ReservationRepository.findByOrderLineId`), the matching event also
+ * drives that reservation through `ReservationRepository`'s single
+ * transition path (`markPickedUp`/`markReturned`, both routed through
+ * `applyReservationEvent`) — never by writing `state` directly. The
+ * transition runs *before* the event is recorded: an illegal transition
+ * (e.g. a RETURNED event with no prior pickup) throws
+ * `IllegalReservationTransitionError` and the event is never written, so
+ * the append-only log never records an operation that didn't actually
+ * happen. Not every order line has a reservation (a product-sale line,
+ * for instance) — `findByOrderLineId` returning nothing is not an error,
+ * it just means this event has nothing to transition.
  */
 export class FulfillmentEventService {
   constructor(
     private readonly orderLines: OrderRepository,
     private readonly events: FulfillmentEventRepository,
+    private readonly reservations: ReservationRepository,
   ) {}
 
   recordPickup(
@@ -77,6 +88,15 @@ export class FulfillmentEventService {
     const line = this.orderLines.findLineById(ctx, input.orderLineId);
     if (!line) {
       throw new OrderLineNotFoundError(input.orderLineId);
+    }
+
+    const reservation = this.reservations.findByOrderLineId(ctx, input.orderLineId);
+    if (reservation) {
+      if (kind === "PICKED_UP") {
+        this.reservations.markPickedUp(ctx, reservation.id);
+      } else {
+        this.reservations.markReturned(ctx, reservation.id, input.occurredAt);
+      }
     }
 
     return this.events.record(ctx, {

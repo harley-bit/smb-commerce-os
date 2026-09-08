@@ -4,6 +4,7 @@ import {
   generateUuidV7,
   parseUtcIso,
   toUtcIso,
+  type ReservationEventType,
   type TenantContext,
 } from "@smb-os/domain";
 import { and, count as sqlCount, desc, eq, gt, lt, or, type SQLWrapper } from "drizzle-orm";
@@ -220,13 +221,34 @@ export class ReservationRepository extends TenantScopedRepository<typeof reserva
   };
 
   /**
-   * `docs/cards/D059.md` deliverable — the HELD → CONFIRMED transition.
-   * Routes through `applyReservationEvent` (`packages/domain`) rather than
-   * writing `state` directly, so an illegal transition (already CONFIRMED,
-   * EXPIRED, etc.) throws `IllegalReservationTransitionError` instead of
-   * silently overwriting a terminal or already-advanced state.
+   * `docs/cards/D071.md` — resolves the reservation a fulfillment event's
+   * order line belongs to, so `FulfillmentEventService` can drive its state
+   * machine without the caller having to know the reservation's id.
    */
-  confirm: RepositoryMethod<[id: string], void> = (ctx, id) => {
+  findByOrderLineId: RepositoryMethod<[orderLineId: string], Reservation | undefined> = (ctx, orderLineId) => {
+    return this.conn.db
+      .select()
+      .from(reservations)
+      .where(and(this.scope(ctx), eq(reservations.orderLineId, orderLineId)))
+      .get() as Reservation | undefined;
+  };
+
+  /**
+   * `docs/cards/D071.md` — the single write path every state transition in
+   * this repository routes through. Reads the current row, hands its state
+   * and the requested event to `applyReservationEvent` (`packages/domain`)
+   * — the one place that knows which transitions are legal — and only then
+   * writes back the state it returns. There is no method anywhere in this
+   * repository that lets a caller set `state` to an arbitrary value: every
+   * public transition (`confirm`, `cancel`, `markPickedUp`, `markReturned`)
+   * is a thin wrapper naming one `ReservationEventType`, not a setter. An
+   * illegal transition (e.g. `RETURNED` on a reservation that was never
+   * picked up) throws `IllegalReservationTransitionError` instead of
+   * silently overwriting a terminal or out-of-order state — this card's
+   * security check: one audited path means one place to review, log, and
+   * reason about for every state change a reservation can ever undergo.
+   */
+  private transition(ctx: TenantContext, id: string, eventType: ReservationEventType, releasedAt?: string): void {
     let subjectId = "";
     const attempt = this.conn.sqlite.transaction((): void => {
       const row = this.findById(ctx, id);
@@ -234,16 +256,23 @@ export class ReservationRepository extends TenantScopedRepository<typeof reserva
         throw new Error(`Reservation not found: ${id}`);
       }
       subjectId = row.subjectId;
-      const nextState = applyReservationEvent(row.state, { type: "CONFIRM" });
+      const nextState = applyReservationEvent(row.state, { type: eventType });
       this.conn.db
         .update(reservations)
-        .set({ state: nextState })
+        .set(releasedAt === undefined ? { state: nextState } : { state: nextState, releasedAt })
         .where(and(this.scope(ctx), eq(reservations.id, id)))
         .run();
     });
 
     attempt.immediate();
     this.cache?.invalidateSubject(ctx.merchantId, subjectId);
+  }
+
+  /**
+   * `docs/cards/D059.md` deliverable — the HELD → CONFIRMED transition.
+   */
+  confirm: RepositoryMethod<[id: string], void> = (ctx, id) => {
+    this.transition(ctx, id, "CONFIRM");
   };
 
   /**
@@ -257,23 +286,31 @@ export class ReservationRepository extends TenantScopedRepository<typeof reserva
    * not started yet.
    */
   cancel: RepositoryMethod<[id: string, releasedAt: string], void> = (ctx, id, releasedAt) => {
-    let subjectId = "";
-    const attempt = this.conn.sqlite.transaction((): void => {
-      const row = this.findById(ctx, id);
-      if (!row) {
-        throw new Error(`Reservation not found: ${id}`);
-      }
-      subjectId = row.subjectId;
-      const nextState = applyReservationEvent(row.state, { type: "CANCELLED" });
-      this.conn.db
-        .update(reservations)
-        .set({ state: nextState, releasedAt })
-        .where(and(this.scope(ctx), eq(reservations.id, id)))
-        .run();
-    });
+    this.transition(ctx, id, "CANCELLED", releasedAt);
+  };
 
-    attempt.immediate();
-    this.cache?.invalidateSubject(ctx.merchantId, subjectId);
+  /**
+   * `docs/cards/D071.md` — the CONFIRMED → IN_USE transition, driven by a
+   * `FulfillmentEventService.recordPickup` call (D070) rather than callable
+   * directly by an HTTP caller. Attempting this from any state other than
+   * `CONFIRMED` (e.g. a reservation that's still `HELD`, or one already
+   * `IN_USE`) throws `IllegalReservationTransitionError`.
+   */
+  markPickedUp: RepositoryMethod<[id: string], void> = (ctx, id) => {
+    this.transition(ctx, id, "PICKED_UP");
+  };
+
+  /**
+   * `docs/cards/D071.md` — the IN_USE → COMPLETED transition, driven by a
+   * `FulfillmentEventService.recordReturn` call (D070). Stamps `releasedAt`
+   * the same way `cancel` does — a completed reservation stops blocking the
+   * subject just as surely as a cancelled one. A reservation that was never
+   * picked up (still `CONFIRMED`, or any other non-`IN_USE` state) cannot
+   * skip straight to `RETURNED`: `applyReservationEvent` has no such
+   * transition, so it throws `IllegalReservationTransitionError`.
+   */
+  markReturned: RepositoryMethod<[id: string, releasedAt: string], void> = (ctx, id, releasedAt) => {
+    this.transition(ctx, id, "RETURNED", releasedAt);
   };
 
   /**
