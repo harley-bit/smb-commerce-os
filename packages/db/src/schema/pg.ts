@@ -436,3 +436,77 @@ export const orderLines = pgTable(
     ),
   ],
 );
+
+/**
+ * `docs/design/03` "Payments and deposits". `provider_ref` is unique per
+ * `provider` — the idempotency anchor `06`'s webhook handler looks up before
+ * reprocessing an event, so the same provider can never record the same
+ * event twice. **No PAN, CVV, or track data anywhere in this table** — card
+ * data never touches our servers (`07`); `provider_ref` and `raw_event_json`
+ * carry only what the provider's API already treats as non-card metadata.
+ */
+export const payments = pgTable(
+  "payments",
+  {
+    id: uuid("id").primaryKey(),
+    merchantId: uuid("merchant_id")
+      .notNull()
+      .references(() => merchants.id),
+    orderId: uuid("order_id")
+      .notNull()
+      .references(() => orders.id),
+    provider: text("provider").notNull(),
+    providerRef: text("provider_ref").notNull(),
+    kind: text("kind", {
+      enum: ["CHARGE", "REFUND", "DEPOSIT_HOLD", "DEPOSIT_CAPTURE"],
+    }).notNull(),
+    amountMinor: integer("amount_minor").notNull(),
+    currency: text("currency").notNull(),
+    status: text("status", {
+      enum: ["PENDING", "SUCCEEDED", "FAILED", "REFUNDED"],
+    }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+    rawEventJson: text("raw_event_json"),
+  },
+  (table) => [
+    uniqueIndex("payments_provider_provider_ref_unique").on(
+      table.provider,
+      table.providerRef,
+    ),
+  ],
+);
+
+/**
+ * `docs/design/03` "Payments and deposits". `expires_at` is **mandatory** —
+ * set from the provider's authorization window, with a 30-day ceiling as a
+ * hard product constraint (`05`). Financial record: never deleted, no
+ * `archivedAt` column.
+ */
+export const depositAuthorizations = pgTable("deposit_authorizations", {
+  id: uuid("id").primaryKey(),
+  merchantId: uuid("merchant_id")
+    .notNull()
+    .references(() => merchants.id),
+  orderLineId: uuid("order_line_id")
+    .notNull()
+    .references(() => orderLines.id),
+  paymentId: uuid("payment_id")
+    .notNull()
+    .references(() => payments.id),
+  amountMinor: integer("amount_minor").notNull(),
+  currency: text("currency").notNull(),
+  state: text("state", {
+    enum: [
+      "AUTHORIZED",
+      "RELEASED",
+      "PARTIALLY_CAPTURED",
+      "CAPTURED",
+      "EXPIRED",
+      "FAILED",
+    ],
+  }).notNull(),
+  authorizedAt: timestamp("authorized_at", { withTimezone: true }).notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  capturedMinor: integer("captured_minor"),
+  releasedAt: timestamp("released_at", { withTimezone: true }),
+});

@@ -50,6 +50,13 @@
       "when": 1788873024916,
       "tag": "0006_short_zodiak",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1788873329350,
+      "tag": "0007_friendly_shiver_man",
+      "breakpoints": true
     }
   ]
 }
