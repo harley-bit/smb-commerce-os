@@ -143,6 +143,16 @@ def record_card_timing(day_id: str, elapsed_seconds: float) -> None:
     with TIMINGS_FILE.open("a") as f:
         f.write(json.dumps(entry) + "\n")
 
+    # Commit immediately -- this write happens after the card's own commit,
+    # so if left uncommitted it becomes a stray local change that blocks the
+    # *next* card via working_tree_dirty(). Local-only commit (no push), same
+    # as every other commit this script's card runs make.
+    subprocess.run(["git", "add", str(TIMINGS_FILE)], cwd=REPO, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-m", f"chore: record {day_id}'s actual timing for the adaptive scheduler"],
+        cwd=REPO, capture_output=True,
+    )
+
 
 def load_recent_timings(limit: int = AUTO_HISTORY_WINDOW) -> list[dict]:
     if not TIMINGS_FILE.exists():
