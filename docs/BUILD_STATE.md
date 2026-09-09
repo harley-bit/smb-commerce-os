@@ -67,7 +67,12 @@
 
 ## Current card
 
-**Now current: `D140` (Phase 8 — Mobile Application, Mobile customer flows — Merchant discovery and page). No gate. `D139` closed Done this session — see below.**
+**Now current: `D141` (Phase 8 — Mobile Application, Mobile customer flows — Catalog browse). No gate. `D140` closed Done this session — see below.**
+
+**D140 background (Merchant discovery and page) — Done:**
+Built the mobile `Home` screen (previously a `PlaceholderScreen`) with real data from `GET /v1/m/{slug}` + `GET /v1/m/{slug}/listings`, rendering a mixed PRODUCT/SERVICE/RENTAL catalog — new `merchantCatalog.ts` and `fetchMerchantHome.ts` (unit-tested, DI'd fetch, contract-validated) plus thin `HomeScreen.tsx` glue, wired into `App.tsx`. Full gate green (12/12 lint, 10/10 typecheck, 11/11 test tasks incl. 35/35 in `@smb-os/mobile`), both platforms confirmed bundling clean via `expo export`. Full detail in `docs/logs/D140.md`. **Pointer advances to `D141`.**
+
+**Recurring process note (second occurrence — see fix below):** D140's session again correctly closed the code/log/calendar but left this file's "Current card" heading un-updated, same as D139's session. Fixed in this immediate follow-up. Since this has now happened twice in a row, `CLAUDE.md`'s build protocol step 8 has been strengthened to call out the exact heading line by name so future sessions can't miss it.
 
 **D139 background (Navigation and design parity) — Done:**
 Built a zero-native-dependency navigation stack (`push`/`goBack`/`reset`) whose six screens are typed 1:1 against the web storefront's `/m/[slug]` route tree, plus RN `Button`/`TextField` components mirroring `apps/web/src/components`'s prop surface — `SignInScreen` now actually uses them. `App.tsx` wires `SignIn` → `Home` through the reducer, with `PlaceholderScreen` standing in for the screens D140–D147 will implement. Full gate green; both platforms confirmed bundling clean via `expo export`. Full detail in `docs/logs/D139.md`. **Pointer advances to `D140`.**

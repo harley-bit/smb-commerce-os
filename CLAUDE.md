@@ -59,7 +59,7 @@ Full protocol: `docs/design/12_daily_build_protocol.md`. Summary:
 5. Run the local gate: `pnpm lint && pnpm typecheck && pnpm test && pnpm test:isolation`.
 6. Answer the card's security question in the card's log entry.
 7. Commit with the day ID in the message (e.g. `feat(reservations): ... [D047]`).
-8. Update `docs/BUILD_STATE.md`: status, what got done, what's next, any blocker — in one or two sentences. This note is what lets the next session resume cold.
+8. Update `docs/BUILD_STATE.md`: status, what got done, what's next, any blocker — in one or two sentences. This note is what lets the next session resume cold. **This step is not done until the literal `## Current card` section's bolded `Now current: `D{NNN}`` heading line itself names the *next* Day ID — not just a background paragraph describing what happened.** Two consecutive automated runs (D139, D140, 2026-09-09) closed out the code/log/calendar correctly but left that exact heading line unchanged, pointing to the just-finished card instead of the next one; `run_build_loop.py` correctly detected the stall and stopped both times. Before committing, re-read the heading line you just edited and confirm the Day ID in it is one greater than the card you just closed (or the next unblocked Day ID, if skipping).
 
 **Never mark a card done that isn't.** Mark it `Carried` with a one-sentence reason. A false "done" is worse than an honest "carried."
 
