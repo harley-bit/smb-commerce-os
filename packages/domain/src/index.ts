@@ -18,6 +18,7 @@ export * from "./rentals/conditionGrade.js";
 export * from "./rentals/damageClaimStateMachine.js";
 export * from "./rentals/lateFeePolicy.js";
 export * from "./orders/cancellationPolicy.js";
+export * from "./orders/orderTiming.js";
 export * from "./payments/depositStateMachine.js";
 export * from "./payments/depositDashboard.js";
 export * from "./payments/authorizationWindow.js";

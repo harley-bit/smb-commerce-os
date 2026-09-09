@@ -216,6 +216,31 @@ describe("OrderRepository", () => {
     expect(results.map((order) => order.id)).toEqual([orderA2, orderA1]);
   });
 
+  it("listByCustomer() returns only that customer's orders within the caller's merchant, most recently placed first", () => {
+    const ctxA = createTenantContext(merchantA);
+    const ctxB = createTenantContext(merchantB);
+
+    const orderUserA1 = repo.create(ctxA, { customerUserId: userA, status: "CART", currency: "USD" });
+    const orderUserA2 = repo.create(ctxA, { customerUserId: userA, status: "CONFIRMED", currency: "USD" });
+    repo.create(ctxA, { customerUserId: userB, status: "CART", currency: "USD" });
+    repo.create(ctxB, { customerUserId: userA, status: "CART", currency: "USD" });
+
+    connection.db
+      .update(sqliteSchema.orders)
+      .set({ placedAt: "2026-01-01T00:00:00.000Z" })
+      .where(eq(sqliteSchema.orders.id, orderUserA1))
+      .run();
+    connection.db
+      .update(sqliteSchema.orders)
+      .set({ placedAt: "2026-02-01T00:00:00.000Z" })
+      .where(eq(sqliteSchema.orders.id, orderUserA2))
+      .run();
+
+    const results = repo.listByCustomer(ctxA, userA);
+
+    expect(results.map((order) => order.id)).toEqual([orderUserA2, orderUserA1]);
+  });
+
   it("updateContactDetails() cannot modify another merchant's order", () => {
     const ctxA = createTenantContext(merchantA);
     const ctxB = createTenantContext(merchantB);

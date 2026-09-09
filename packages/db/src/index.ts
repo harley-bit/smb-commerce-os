@@ -370,3 +370,10 @@ export {
   type ReceiptEmailInput,
   type ReceiptEmailNotifier,
 } from "./services/OrderConfirmationService.js";
+export {
+  CustomerOrderHistoryService,
+  type CustomerOrderSummary,
+  type CustomerOrderLineDetail,
+  type CustomerOrderDetail,
+  type CustomerOrderHistory,
+} from "./services/CustomerOrderHistoryService.js";

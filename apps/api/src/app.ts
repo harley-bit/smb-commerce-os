@@ -25,6 +25,7 @@ import { registerAvailabilityRoutes } from "./routes/availability.js";
 import { registerPublicStorefrontRoutes } from "./routes/publicStorefront.js";
 import { registerCheckoutPaymentRoutes } from "./routes/checkoutPayment.js";
 import { registerOrderConfirmationRoutes } from "./routes/orderConfirmation.js";
+import { registerCustomerOrderRoutes } from "./routes/customerOrders.js";
 import { registerBookingRoutes } from "./routes/bookings.js";
 import { registerCalendarRoutes } from "./routes/calendar.js";
 import { registerOrderRoutes } from "./routes/orders.js";
@@ -260,6 +261,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   registerOrderConfirmationRoutes(app, connection, options.onReceiptEmail ?? (() => undefined), {
     rateLimit: options.publicCheckoutRateLimit,
   });
+  registerCustomerOrderRoutes(app, connection, authProvider);
   registerBookingRoutes(app, connection, availabilityCache);
   registerCalendarRoutes(app, connection);
   registerOrderRoutes(app, connection);

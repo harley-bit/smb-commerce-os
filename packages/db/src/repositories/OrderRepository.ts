@@ -125,6 +125,16 @@ export class OrderRepository extends TenantScopedRepository<typeof orders.mercha
       .all() as Order[];
   };
 
+  /** `docs/cards/D132.md` — Order history. A customer's own orders within this merchant, most recently placed first. */
+  listByCustomer: RepositoryMethod<[customerUserId: string], Order[]> = (ctx, customerUserId) => {
+    return this.conn.db
+      .select()
+      .from(orders)
+      .where(and(this.scope(ctx), eq(orders.customerUserId, customerUserId)))
+      .orderBy(desc(orders.placedAt))
+      .all() as Order[];
+  };
+
   addLine: RepositoryMethod<[orderId: string, input: AddOrderLineInput], string> = (ctx, orderId, input) => {
     const id = generateUuidV7();
     this.conn.db
