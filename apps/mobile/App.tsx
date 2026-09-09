@@ -1,6 +1,7 @@
 import { useReducer, useState } from "react";
 import { StatusBar } from "expo-status-bar";
-import { StyleSheet, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
+import { Button } from "./src/components/Button";
 import { parseMerchantProfile } from "./src/shell/parseMerchantProfile";
 import { SignInScreen } from "./src/auth/SignInScreen";
 import { HomeScreen } from "./src/merchant/HomeScreen";
@@ -10,6 +11,8 @@ import { initialNavigationState, navigationReducer } from "./src/navigation/navi
 import { CartScreen } from "./src/cart/CartScreen";
 import { addLine, createEmptyCart, removeLine, type CartState } from "./src/cart/cartStore";
 import { expoCartLineGenerators } from "./src/cart/expoIdGenerators";
+import { PaymentScreen } from "./src/payments/PaymentScreen";
+import { API_BASE_URL } from "./src/auth/apiConfig";
 
 /**
  * D137's app shell: no real network call yet (that's the mobile customer
@@ -30,6 +33,25 @@ const homeSlug = placeholderProfile.ok ? placeholderProfile.profile.slug : "smb-
  * `navigationState.test.ts`'s reset case), and free push/pop between the
  * rest of the core screens from there.
  */
+/**
+ * `docs/cards/D146.md` — mirrors web's `checkout/page.tsx` (D130): no real
+ * order exists to pay yet whenever `Checkout` is reached without an
+ * `orderId` (the app never fabricates one), since `CartService` still has
+ * no HTTP route to actually create one (`docs/cards/D142.md`'s log).
+ */
+function NoOrderNotice({ canGoBack, onGoBack }: { canGoBack: boolean; onGoBack: () => void }) {
+  return (
+    <>
+      <Text accessibilityRole="alert">No order to check out.</Text>
+      {canGoBack ? (
+        <Button variant="secondary" onPress={onGoBack}>
+          Back
+        </Button>
+      ) : null}
+    </>
+  );
+}
+
 export default function App() {
   const [state, dispatch] = useReducer(navigationReducer, undefined, initialNavigationState);
   const [cart, setCart] = useState<CartState>(createEmptyCart);
@@ -125,6 +147,31 @@ export default function App() {
           onGoBack={() => dispatch({ type: "goBack" })}
           onRemoveLine={(lineId) => setCart((current) => removeLine(current, lineId))}
           onCheckout={() => dispatch({ type: "push", screen: { name: "Checkout", params: { slug } } })}
+        />
+        <StatusBar style="auto" />
+      </View>
+    );
+  }
+
+  if (state.current.name === "Checkout") {
+    const { slug, orderId } = state.current.params;
+    if (!orderId) {
+      return (
+        <View style={styles.container}>
+          <NoOrderNotice canGoBack={state.stack.length > 0} onGoBack={() => dispatch({ type: "goBack" })} />
+          <StatusBar style="auto" />
+        </View>
+      );
+    }
+    return (
+      <View style={styles.container}>
+        <PaymentScreen
+          deps={{ baseUrl: API_BASE_URL, fetchFn: fetch, generateIdempotencyKey: expoCartLineGenerators.generateIdempotencyKey }}
+          slug={slug}
+          orderId={orderId}
+          canGoBack={state.stack.length > 0}
+          onGoBack={() => dispatch({ type: "goBack" })}
+          onPaid={() => dispatch({ type: "push", screen: { name: "OrderConfirmation", params: { slug, orderId } } })}
         />
         <StatusBar style="auto" />
       </View>

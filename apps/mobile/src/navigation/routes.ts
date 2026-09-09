@@ -21,7 +21,14 @@ export type ScreenParams = {
   Home: { slug: string };
   ListingDetail: { slug: string; listingSlug: string };
   Cart: { slug: string };
-  Checkout: { slug: string };
+  /**
+   * `orderId` is optional for the same reason
+   * `apps/web/src/app/m/[slug]/checkout/page.tsx` (D130) reads it from an
+   * optional query string: `CartService` has no HTTP route yet
+   * (`docs/cards/D142.md`'s log), so nothing on this app yet creates a real
+   * order to check out — see `docs/cards/D146.md`'s log for this gap.
+   */
+  Checkout: { slug: string; orderId?: string };
   OrderConfirmation: { slug: string; orderId: string };
   AccountOrders: { slug: string };
 };
