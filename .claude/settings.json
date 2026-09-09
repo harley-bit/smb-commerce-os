@@ -5,8 +5,8 @@
     "allow": [
       "Bash(*)",
       "Monitor",
-      "Read(/Users/harleybarrales/Documents/Git Code Base/smb-commerce-os/**)",
-      "Edit(/Users/harleybarrales/Documents/Git Code Base/smb-commerce-os/**)",
+      "Read(/Users/harleybarrales/dev/smb-commerce-os/**)",
+      "Edit(/Users/harleybarrales/dev/smb-commerce-os/**)",
       "WebFetch",
       "WebSearch"
     ],

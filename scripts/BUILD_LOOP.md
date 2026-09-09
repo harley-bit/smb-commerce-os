@@ -9,7 +9,7 @@ current-card pointer actually moved, and repeat until something stops it.
 ## Run it by hand
 
 ```bash
-cd "/Users/harleybarrales/Documents/Git Code Base/smb-commerce-os"
+cd "/Users/harleybarrales/dev/smb-commerce-os"
 python3 scripts/run_build_loop.py            # run until the usage limit hits or a card stalls
 python3 scripts/run_build_loop.py --once     # exactly one card, then stop
 python3 scripts/run_build_loop.py --max-cards 3
