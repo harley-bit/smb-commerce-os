@@ -79,4 +79,29 @@ describe("middleware", () => {
     expect(response?.status).toBe(200);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
+
+  it("sets a strict, nonce-based CSP header on every response, including unprotected routes", async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const response = await middleware(makeRequest("/login"));
+    const csp = response?.headers.get("content-security-policy");
+
+    expect(csp).toBeTruthy();
+    expect(csp?.toLowerCase()).not.toContain("unsafe-inline");
+    expect(csp).toMatch(/script-src 'self' 'nonce-[^']+' 'strict-dynamic'/);
+  });
+
+  it("sets a fresh nonce per request, never reusing one across calls", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: false, json: async () => ({ error: "Not authenticated." }) }),
+    );
+
+    const first = await middleware(makeRequest("/dashboard"));
+    const second = await middleware(makeRequest("/dashboard"));
+
+    expect(first?.headers.get("x-nonce")).toBeTruthy();
+    expect(first?.headers.get("x-nonce")).not.toBe(second?.headers.get("x-nonce"));
+  });
 });

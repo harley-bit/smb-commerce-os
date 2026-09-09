@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Button, TextField } from "../../components";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
@@ -36,27 +37,23 @@ export default function LoginPage() {
     <main>
       <h1>Log in</h1>
       <form onSubmit={handleSubmit}>
-        <label>
-          Email
-          <input
-            type="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            autoComplete="username"
-            required
-          />
-        </label>
-        <label>
-          Password
-          <input
-            type="password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            autoComplete="current-password"
-            required
-          />
-        </label>
-        <button type="submit">Log in</button>
+        <TextField
+          label="Email"
+          type="email"
+          value={email}
+          onChange={(event) => setEmail(event.target.value)}
+          autoComplete="username"
+          required
+        />
+        <TextField
+          label="Password"
+          type="password"
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+          autoComplete="current-password"
+          required
+        />
+        <Button type="submit">Log in</Button>
       </form>
       {error ? <p role="alert">{error}</p> : null}
     </main>
