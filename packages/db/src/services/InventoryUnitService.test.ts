@@ -8,6 +8,7 @@ import { LocationRepository } from "../repositories/LocationRepository.js";
 import { VariantRepository } from "../repositories/VariantRepository.js";
 import { InventoryUnitRepository } from "../repositories/InventoryUnitRepository.js";
 import { AuditLogRepository } from "../repositories/AuditLogRepository.js";
+import { ReservationRepository } from "../repositories/ReservationRepository.js";
 import { InventoryUnitService, InvalidUnitStatusTransitionError } from "./InventoryUnitService.js";
 
 describe("InventoryUnitService", () => {
@@ -344,6 +345,79 @@ describe("InventoryUnitService", () => {
 
       expect(() => service.update(ctxB, "ADMIN", id, { unitCode: "HIJACKED" })).toThrow(/not found/i);
       expect(unitRepo.findById(ctxA, id)).toMatchObject({ unitCode: "SN-001" });
+    });
+  });
+
+  describe("listWithRentalStatus() — docs/cards/D111.md", () => {
+    it("reports AVAILABLE with no return date for a unit with no active reservation", () => {
+      const ctx = createTenantContext(merchantA);
+      const reservationRepo = new ReservationRepository(connection);
+      const rentalAwareService = new InventoryUnitService(unitRepo, auditLogRepo, reservationRepo);
+      createUnit(ctx);
+
+      const units = rentalAwareService.listWithRentalStatus(ctx, "STAFF", variantA, "2026-10-02T00:00:00.000Z");
+
+      expect(units).toHaveLength(1);
+      expect(units[0]).toMatchObject({ rentalStatus: "AVAILABLE", returnDueAt: null });
+    });
+
+    it("this card's acceptance criterion — a unit with an active blocking reservation reports OUT_ON_RENTAL with its return date, visibly unavailable for sale", () => {
+      const ctx = createTenantContext(merchantA);
+      const reservationRepo = new ReservationRepository(connection);
+      const rentalAwareService = new InventoryUnitService(unitRepo, auditLogRepo, reservationRepo);
+      const unitId = createUnit(ctx);
+      reservationRepo.create(ctx, {
+        subjectType: "INVENTORY_UNIT",
+        subjectId: unitId,
+        startsAt: "2026-10-01T09:00:00.000Z",
+        endsAt: "2026-10-05T10:00:00.000Z",
+        quantity: 1,
+        state: "IN_USE",
+        createdAt: "2026-10-01T08:45:00.000Z",
+      });
+
+      const units = rentalAwareService.listWithRentalStatus(ctx, "STAFF", variantA, "2026-10-02T00:00:00.000Z");
+
+      expect(units).toHaveLength(1);
+      expect(units[0]).toMatchObject({
+        id: unitId,
+        rentalStatus: "OUT_ON_RENTAL",
+        returnDueAt: "2026-10-05T10:00:00.000Z",
+      });
+    });
+
+    it("a unit whose reservation has already completed reports AVAILABLE again", () => {
+      const ctx = createTenantContext(merchantA);
+      const reservationRepo = new ReservationRepository(connection);
+      const rentalAwareService = new InventoryUnitService(unitRepo, auditLogRepo, reservationRepo);
+      const unitId = createUnit(ctx);
+      reservationRepo.create(ctx, {
+        subjectType: "INVENTORY_UNIT",
+        subjectId: unitId,
+        startsAt: "2026-10-01T09:00:00.000Z",
+        endsAt: "2026-10-05T10:00:00.000Z",
+        quantity: 1,
+        state: "COMPLETED",
+        createdAt: "2026-10-01T08:45:00.000Z",
+      });
+
+      const units = rentalAwareService.listWithRentalStatus(ctx, "STAFF", variantA, "2026-10-06T00:00:00.000Z");
+
+      expect(units[0]).toMatchObject({ rentalStatus: "AVAILABLE", returnDueAt: null });
+    });
+
+    it("is tenant-scoped — merchant B's identical unit id does not leak into merchant A's rental-status view", () => {
+      const ctxA = createTenantContext(merchantA);
+      const ctxB = createTenantContext(generateUuidV7());
+      const reservationRepo = new ReservationRepository(connection);
+      const rentalAwareService = new InventoryUnitService(unitRepo, auditLogRepo, reservationRepo);
+      createUnit(ctxA);
+
+      const unitsA = rentalAwareService.listWithRentalStatus(ctxA, "STAFF", variantA, "2026-10-02T00:00:00.000Z");
+      const unitsB = rentalAwareService.listWithRentalStatus(ctxB, "STAFF", variantA, "2026-10-02T00:00:00.000Z");
+
+      expect(unitsA).toHaveLength(1);
+      expect(unitsB).toHaveLength(0);
     });
   });
 });

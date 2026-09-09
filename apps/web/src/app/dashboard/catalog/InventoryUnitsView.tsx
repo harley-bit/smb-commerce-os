@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { z } from "zod";
-import type { InventoryUnitRecord } from "@smb-os/contracts";
+import type { InventoryUnitWithRentalStatusRecord } from "@smb-os/contracts";
 import { Button, TextField } from "../../../components";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
@@ -40,7 +40,7 @@ interface RowDraft {
   conditionGrade: string;
 }
 
-function draftFromUnit(unit: InventoryUnitRecord): RowDraft {
+function draftFromUnit(unit: InventoryUnitWithRentalStatusRecord): RowDraft {
   return {
     unitCode: unit.unitCode,
     expectedLifeMonths: unit.expectedLifeMonths === null ? "" : String(unit.expectedLifeMonths),
@@ -83,7 +83,7 @@ export interface InventoryUnitsViewProps {
  * `updateInventoryUnitInputSchema` rejects them outright.
  */
 export function InventoryUnitsView({ merchantId, listingId, variantId }: InventoryUnitsViewProps) {
-  const [units, setUnits] = useState<InventoryUnitRecord[] | null>(null);
+  const [units, setUnits] = useState<InventoryUnitWithRentalStatusRecord[] | null>(null);
   const [drafts, setDrafts] = useState<Record<string, RowDraft>>({});
   const [newUnit, setNewUnit] = useState<NewUnitDraft>(emptyNewUnit);
   const [error, setError] = useState<string | null>(null);
@@ -100,7 +100,7 @@ export function InventoryUnitsView({ merchantId, listingId, variantId }: Invento
       setError("Could not load inventory units.");
       return;
     }
-    const loaded = (await response.json()) as InventoryUnitRecord[];
+    const loaded = (await response.json()) as InventoryUnitWithRentalStatusRecord[];
     setUnits(loaded);
     setDrafts(Object.fromEntries(loaded.map((unit) => [unit.id, draftFromUnit(unit)])));
   }
@@ -266,6 +266,7 @@ export function InventoryUnitsView({ merchantId, listingId, variantId }: Invento
             <tr>
               <th>Unit code</th>
               <th>Status</th>
+              <th>Rental status</th>
               <th>Expected life (months)</th>
               <th>Condition grade</th>
               <th>Acquisition cost (minor units)</th>
@@ -276,7 +277,8 @@ export function InventoryUnitsView({ merchantId, listingId, variantId }: Invento
           <tbody>
             {units?.map((unit) => {
               const draft = drafts[unit.id] ?? draftFromUnit(unit);
-              const retireable = unit.status !== "SOLD" && unit.status !== "RETIRED";
+              const outOnRental = unit.rentalStatus === "OUT_ON_RENTAL";
+              const retireable = unit.status !== "SOLD" && unit.status !== "RETIRED" && !outOnRental;
               return (
                 <tr key={unit.id}>
                   <td>
@@ -287,6 +289,15 @@ export function InventoryUnitsView({ merchantId, listingId, variantId }: Invento
                     />
                   </td>
                   <td>{unit.status}</td>
+                  <td>
+                    {outOnRental ? (
+                      <span>
+                        Out on rental — due back {unit.returnDueAt} — unavailable for sale
+                      </span>
+                    ) : (
+                      <span>Available</span>
+                    )}
+                  </td>
                   <td>
                     <TextField
                       label={`Expected life for ${unit.id}`}

@@ -62,3 +62,18 @@ export const inventoryUnitSchema = z.object({
   retiredAt: z.string().nullable(),
 });
 export type InventoryUnitRecord = z.infer<typeof inventoryUnitSchema>;
+
+/**
+ * `docs/cards/D111.md` — computed fresh on every `GET .../units` read from
+ * the unit's currently-blocking reservation (`InventoryUnitService.listWithRentalStatus`),
+ * never persisted on the unit row itself. `GET .../units`'s real response
+ * shape, distinct from `inventoryUnitSchema` above.
+ */
+export const rentalStatusSchema = z.enum(["AVAILABLE", "OUT_ON_RENTAL"]);
+export type RentalStatus = z.infer<typeof rentalStatusSchema>;
+
+export const inventoryUnitWithRentalStatusSchema = inventoryUnitSchema.extend({
+  rentalStatus: rentalStatusSchema,
+  returnDueAt: z.string().nullable(),
+});
+export type InventoryUnitWithRentalStatusRecord = z.infer<typeof inventoryUnitWithRentalStatusSchema>;

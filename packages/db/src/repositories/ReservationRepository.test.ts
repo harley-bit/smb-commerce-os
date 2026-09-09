@@ -971,6 +971,71 @@ describe("ReservationRepository", () => {
     });
   });
 
+  describe("findActiveBlocking() — docs/cards/D111.md, rental status on units", () => {
+    it("returns the blocking reservation covering the given instant, with its endsAt as the return date", () => {
+      const ctx = createTenantContext(merchantA);
+      const unitId = generateUuidV7();
+
+      const id = repo.create(ctx, {
+        subjectType: "INVENTORY_UNIT",
+        subjectId: unitId,
+        startsAt: "2026-10-01T09:00:00.000Z",
+        endsAt: "2026-10-05T10:00:00.000Z",
+        quantity: 1,
+        state: "IN_USE",
+        createdAt: "2026-10-01T08:45:00.000Z",
+      });
+
+      const active = repo.findActiveBlocking(ctx, "INVENTORY_UNIT", unitId, "2026-10-02T00:00:00.000Z");
+      expect(active).toMatchObject({ id, endsAt: "2026-10-05T10:00:00.000Z" });
+    });
+
+    it("returns undefined once the reservation has ended", () => {
+      const ctx = createTenantContext(merchantA);
+      const unitId = generateUuidV7();
+
+      repo.create(ctx, {
+        subjectType: "INVENTORY_UNIT",
+        subjectId: unitId,
+        startsAt: "2026-10-01T09:00:00.000Z",
+        endsAt: "2026-10-05T10:00:00.000Z",
+        quantity: 1,
+        state: "COMPLETED",
+        createdAt: "2026-10-01T08:45:00.000Z",
+      });
+
+      expect(repo.findActiveBlocking(ctx, "INVENTORY_UNIT", unitId, "2026-10-06T00:00:00.000Z")).toBeUndefined();
+    });
+
+    it("returns undefined for a subject with no reservation at all", () => {
+      const ctx = createTenantContext(merchantA);
+      expect(
+        repo.findActiveBlocking(ctx, "INVENTORY_UNIT", generateUuidV7(), "2026-10-02T00:00:00.000Z"),
+      ).toBeUndefined();
+    });
+
+    it("is tenant-scoped — merchant B's identical unit id does not surface as merchant A's active rental", () => {
+      const ctxA = createTenantContext(merchantA);
+      const ctxB = createTenantContext(merchantB);
+      const unitId = generateUuidV7();
+
+      repo.create(ctxB, {
+        subjectType: "INVENTORY_UNIT",
+        subjectId: unitId,
+        startsAt: "2026-10-01T09:00:00.000Z",
+        endsAt: "2026-10-05T10:00:00.000Z",
+        quantity: 1,
+        state: "CONFIRMED",
+        createdAt: "2026-10-01T08:45:00.000Z",
+      });
+
+      expect(repo.findActiveBlocking(ctxA, "INVENTORY_UNIT", unitId, "2026-10-02T00:00:00.000Z")).toBeUndefined();
+      expect(repo.findActiveBlocking(ctxB, "INVENTORY_UNIT", unitId, "2026-10-02T00:00:00.000Z")).toMatchObject({
+        endsAt: "2026-10-05T10:00:00.000Z",
+      });
+    });
+  });
+
   describe("findFutureBlocking() — docs/cards/D069.md", () => {
     it("returns a blocking reservation that starts after asOf", () => {
       const ctx = createTenantContext(merchantA);

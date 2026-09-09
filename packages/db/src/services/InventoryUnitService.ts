@@ -3,10 +3,26 @@ import type { MerchantUserRole } from "../repositories/MerchantUserRepository.js
 import type { AuditLogRepository } from "../repositories/AuditLogRepository.js";
 import {
   type CreateInventoryUnitInput,
+  type InventoryUnit,
   type InventoryUnitRepository,
   type InventoryUnitStatus,
   type UpdateInventoryUnitFields,
 } from "../repositories/InventoryUnitRepository.js";
+import type { ReservationRepository } from "../repositories/ReservationRepository.js";
+
+export type RentalStatus = "AVAILABLE" | "OUT_ON_RENTAL";
+
+/**
+ * `docs/cards/D111.md` deliverable — a unit's own `status` column stays
+ * `AVAILABLE` for the whole life of a rental (`docs/design/05`/D065's log:
+ * "currently rented" is derived from `reservations`, never stored on the
+ * unit itself), so this view field is computed fresh on every read, not
+ * persisted.
+ */
+export interface InventoryUnitWithRentalStatus extends InventoryUnit {
+  rentalStatus: RentalStatus;
+  returnDueAt: string | null;
+}
 
 export interface TransitionUnitStatusInput {
   unitId: string;
@@ -58,6 +74,13 @@ export class InventoryUnitService {
   constructor(
     private readonly unitRepo: InventoryUnitRepository,
     private readonly auditLogRepo: AuditLogRepository,
+    /**
+     * Optional so every pre-existing call site (this card added no new
+     * required dependency to a service already constructed in a dozen
+     * places) keeps working unchanged; `listWithRentalStatus` is the only
+     * method that needs it.
+     */
+    private readonly reservationRepo?: ReservationRepository,
   ) {}
 
   /**
@@ -86,6 +109,37 @@ export class InventoryUnitService {
     }
 
     this.unitRepo.update(ctx, unitId, patch);
+  }
+
+  /**
+   * `docs/cards/D111.md` — "unit list shows out-on-rental with return
+   * date," this card's deliverable, and "a rented unit is visibly
+   * unavailable for sale," its acceptance criterion. Looks up each unit's
+   * currently-blocking reservation (`ReservationRepository.findActiveBlocking`
+   * — the same `CONFIRMED`/`IN_USE`/unexpired-`HELD` predicate that already
+   * enforces invariant I3 on the sale path, D067) and surfaces its `endsAt`
+   * as `returnDueAt`. A unit's own `status` is left untouched — this is a
+   * read-side view, not a status transition.
+   */
+  listWithRentalStatus(
+    ctx: TenantContext,
+    actingRole: MerchantUserRole,
+    variantId: string,
+    asOf: string,
+  ): InventoryUnitWithRentalStatus[] {
+    assertCan({ role: actingRole }, "inventory:view");
+
+    const units = this.unitRepo.listByVariant(ctx, variantId);
+    if (!this.reservationRepo) {
+      return units.map((unit) => ({ ...unit, rentalStatus: "AVAILABLE" as const, returnDueAt: null }));
+    }
+
+    return units.map((unit) => {
+      const active = this.reservationRepo!.findActiveBlocking(ctx, "INVENTORY_UNIT", unit.id, asOf);
+      return active
+        ? { ...unit, rentalStatus: "OUT_ON_RENTAL" as const, returnDueAt: active.endsAt }
+        : { ...unit, rentalStatus: "AVAILABLE" as const, returnDueAt: null };
+    });
   }
 
   transitionStatus(ctx: TenantContext, actingRole: MerchantUserRole, input: TransitionUnitStatusInput): void {

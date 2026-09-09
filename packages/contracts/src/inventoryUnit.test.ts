@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   createInventoryUnitInputSchema,
   inventoryUnitSchema,
+  inventoryUnitWithRentalStatusSchema,
   updateInventoryUnitInputSchema,
 } from "./inventoryUnit.js";
 
@@ -81,5 +82,23 @@ describe("updateInventoryUnitInputSchema", () => {
 
   it("rejects a status key — status changes go through transitionStatus, not this schema", () => {
     expect(() => updateInventoryUnitInputSchema.parse({ status: "SOLD" })).toThrow();
+  });
+});
+
+describe("inventoryUnitWithRentalStatusSchema — docs/cards/D111.md", () => {
+  it("accepts an OUT_ON_RENTAL unit with a return date", () => {
+    const withRental = { ...validUnit, rentalStatus: "OUT_ON_RENTAL" as const, returnDueAt: "2026-10-05T10:00:00.000Z" };
+    expect(inventoryUnitWithRentalStatusSchema.parse(withRental)).toEqual(withRental);
+  });
+
+  it("accepts an AVAILABLE unit with no return date", () => {
+    const available = { ...validUnit, rentalStatus: "AVAILABLE" as const, returnDueAt: null };
+    expect(inventoryUnitWithRentalStatusSchema.parse(available)).toEqual(available);
+  });
+
+  it("rejects an unknown rentalStatus", () => {
+    expect(() =>
+      inventoryUnitWithRentalStatusSchema.parse({ ...validUnit, rentalStatus: "ON_LOAN", returnDueAt: null }),
+    ).toThrow();
   });
 });

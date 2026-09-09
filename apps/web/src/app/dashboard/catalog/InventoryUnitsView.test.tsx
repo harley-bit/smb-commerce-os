@@ -32,6 +32,8 @@ const UNIT = {
   expectedLifeMonths: 36,
   conditionGrade: "A",
   retiredAt: null,
+  rentalStatus: "AVAILABLE",
+  returnDueAt: null,
 };
 
 describe("InventoryUnitsView (D110 — Inventory unit management)", () => {
@@ -160,5 +162,40 @@ describe("InventoryUnitsView (D110 — Inventory unit management)", () => {
 
     await screen.findByLabelText(`Unit code for ${UNIT_ID}`);
     expect(screen.getByRole("button", { name: "Retire" })).toBeDisabled();
+  });
+
+  describe("rental status — docs/cards/D111.md", () => {
+    it("this card's deliverable: shows out-on-rental with its return date", async () => {
+      mockFetchSequence({
+        ok: true,
+        body: [{ ...UNIT, rentalStatus: "OUT_ON_RENTAL", returnDueAt: "2026-10-05T10:00:00.000Z" }],
+      });
+      render(<InventoryUnitsView merchantId={MERCHANT_ID} listingId={LISTING_ID} variantId={VARIANT_ID} />);
+
+      await screen.findByLabelText(`Unit code for ${UNIT_ID}`);
+      expect(screen.getByText(/Out on rental/)).toBeInTheDocument();
+      expect(screen.getByText(/2026-10-05T10:00:00.000Z/)).toBeInTheDocument();
+    });
+
+    it("this card's acceptance criterion: an out-on-rental unit is visibly unavailable for sale — retire disabled too", async () => {
+      mockFetchSequence({
+        ok: true,
+        body: [{ ...UNIT, rentalStatus: "OUT_ON_RENTAL", returnDueAt: "2026-10-05T10:00:00.000Z" }],
+      });
+      render(<InventoryUnitsView merchantId={MERCHANT_ID} listingId={LISTING_ID} variantId={VARIANT_ID} />);
+
+      await screen.findByLabelText(`Unit code for ${UNIT_ID}`);
+      expect(screen.getByText(/unavailable for sale/i)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Retire" })).toBeDisabled();
+    });
+
+    it("shows a plain Available status with no return date when nothing is currently blocking the unit", async () => {
+      mockFetchSequence({ ok: true, body: [UNIT] });
+      render(<InventoryUnitsView merchantId={MERCHANT_ID} listingId={LISTING_ID} variantId={VARIANT_ID} />);
+
+      await screen.findByLabelText(`Unit code for ${UNIT_ID}`);
+      expect(screen.queryByText(/Out on rental/)).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Retire" })).not.toBeDisabled();
+    });
   });
 });

@@ -5,6 +5,7 @@ import {
   AuditLogRepository,
   InventoryUnitRepository,
   InventoryUnitService,
+  ReservationRepository,
   VariantRepository,
   VariantService,
   type Connection,
@@ -44,7 +45,11 @@ function createServiceFactory(connection: Connection): () => Promise<Services> {
       const unitRepo = new InventoryUnitRepository(connection);
       return {
         variantService: new VariantService(new VariantRepository(connection)),
-        unitService: new InventoryUnitService(unitRepo, new AuditLogRepository(connection)),
+        unitService: new InventoryUnitService(
+          unitRepo,
+          new AuditLogRepository(connection),
+          new ReservationRepository(connection),
+        ),
         unitRepo,
       };
     });
@@ -88,7 +93,15 @@ export function registerInventoryUnitRoutes(app: FastifyInstance, connection: Co
       if (!variant) {
         return reply;
       }
-      return reply.code(200).send(services.unitRepo.listByVariant(request.auth!.tenant, variant.id));
+      // `docs/cards/D111.md` — rental status is computed on every read, not
+      // stored on the unit itself; see `InventoryUnitService.listWithRentalStatus`.
+      const units = services.unitService.listWithRentalStatus(
+        request.auth!.tenant,
+        request.auth!.role,
+        variant.id,
+        new Date().toISOString(),
+      );
+      return reply.code(200).send(units);
     },
   );
 

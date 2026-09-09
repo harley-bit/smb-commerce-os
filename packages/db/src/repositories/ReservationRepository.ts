@@ -449,6 +449,22 @@ export class ReservationRepository extends TenantScopedRepository<typeof reserva
     return this.findBlocking(ctx, subjectType, subjectId, asOf, instantEnd, asOf).length > 0;
   };
 
+  /**
+   * `docs/cards/D111.md` — the read side of "a rented unit is visibly
+   * unavailable for sale": same zero-width-instant technique as
+   * `isSubjectCurrentlyBlocked`, but returns the actual blocking row (not
+   * just a boolean) so a caller can read its `endsAt` as the unit's return
+   * date. An unswept expired `HELD` row still does not count, per
+   * `blockingStatePredicate`.
+   */
+  findActiveBlocking: RepositoryMethod<
+    [subjectType: ReservationSubjectType, subjectId: string, asOf: string],
+    Reservation | undefined
+  > = (ctx, subjectType, subjectId, asOf) => {
+    const instantEnd = toUtcIso(new Date(parseUtcIso(asOf).getTime() + 1));
+    return this.findBlocking(ctx, subjectType, subjectId, asOf, instantEnd, asOf)[0];
+  };
+
   findBlocking: RepositoryMethod<
     [
       subjectType: ReservationSubjectType,
