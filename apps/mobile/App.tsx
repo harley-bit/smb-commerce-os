@@ -4,7 +4,7 @@ import { StyleSheet, View } from "react-native";
 import { parseMerchantProfile } from "./src/shell/parseMerchantProfile";
 import { SignInScreen } from "./src/auth/SignInScreen";
 import { HomeScreen } from "./src/merchant/HomeScreen";
-import { ProductDetailScreen } from "./src/merchant/ProductDetailScreen";
+import { ListingDetailScreen } from "./src/merchant/ListingDetailScreen";
 import { PlaceholderScreen } from "./src/navigation/PlaceholderScreen";
 import { initialNavigationState, navigationReducer } from "./src/navigation/navigationState";
 
@@ -59,12 +59,13 @@ export default function App() {
     const { slug, listingSlug } = state.current.params;
     return (
       <View style={styles.container}>
-        <ProductDetailScreen
+        <ListingDetailScreen
           slug={slug}
           listingSlug={listingSlug}
           canGoBack={state.stack.length > 0}
           onGoBack={() => dispatch({ type: "goBack" })}
           onBuy={() => dispatch({ type: "push", screen: { name: "Checkout", params: { slug } } })}
+          onBook={() => dispatch({ type: "push", screen: { name: "Checkout", params: { slug } } })}
         />
         <StatusBar style="auto" />
       </View>
