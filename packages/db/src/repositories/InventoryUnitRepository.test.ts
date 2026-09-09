@@ -166,6 +166,40 @@ describe("InventoryUnitRepository", () => {
     expect(repo.findById(ctx, id2)).toMatchObject({ status: "RETIRED", retiredAt: "2026-09-08T02:00:00.000Z" });
   });
 
+  it("update() patches unitCode/locationId/expectedLifeMonths/conditionGrade", () => {
+    const ctx = createTenantContext(merchantA);
+    const id = repo.create(ctx, {
+      variantId: variantA,
+      locationId: locationA,
+      unitCode: "A-1",
+      trackingMode: "SERIALIZED",
+    });
+
+    repo.update(ctx, id, { unitCode: "A-1-RELABELED", expectedLifeMonths: 24, conditionGrade: "B" });
+
+    expect(repo.findById(ctx, id)).toMatchObject({
+      unitCode: "A-1-RELABELED",
+      expectedLifeMonths: 24,
+      conditionGrade: "B",
+    });
+  });
+
+  it("update() is tenant-scoped — cannot change another merchant's unit", () => {
+    const ctxA = createTenantContext(merchantA);
+    const ctxB = createTenantContext(merchantB);
+
+    const id = repo.create(ctxB, {
+      variantId: variantB,
+      locationId: locationB,
+      unitCode: "B-1",
+      trackingMode: "SERIALIZED",
+    });
+
+    repo.update(ctxA, id, { unitCode: "HIJACKED" });
+
+    expect(repo.findById(ctxB, id)).toMatchObject({ unitCode: "B-1" });
+  });
+
   it("updateStatus() is tenant-scoped — cannot change another merchant's unit", () => {
     const ctxA = createTenantContext(merchantA);
     const ctxB = createTenantContext(merchantB);

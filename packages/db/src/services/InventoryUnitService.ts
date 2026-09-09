@@ -2,8 +2,10 @@ import { assertCan, type TenantContext } from "@smb-os/domain";
 import type { MerchantUserRole } from "../repositories/MerchantUserRepository.js";
 import type { AuditLogRepository } from "../repositories/AuditLogRepository.js";
 import {
+  type CreateInventoryUnitInput,
   type InventoryUnitRepository,
   type InventoryUnitStatus,
+  type UpdateInventoryUnitFields,
 } from "../repositories/InventoryUnitRepository.js";
 
 export interface TransitionUnitStatusInput {
@@ -57,6 +59,34 @@ export class InventoryUnitService {
     private readonly unitRepo: InventoryUnitRepository,
     private readonly auditLogRepo: AuditLogRepository,
   ) {}
+
+  /**
+   * `docs/design/03` line 89: acquisition data ("cheap now, impossible to
+   * backfill") is only ever written here, at creation — `update` below can
+   * never touch it.
+   */
+  create(ctx: TenantContext, actingRole: MerchantUserRole, input: CreateInventoryUnitInput): string {
+    assertCan({ role: actingRole }, "inventory:manage");
+    return this.unitRepo.create(ctx, input);
+  }
+
+  /**
+   * Deliberately typed against `UpdateInventoryUnitFields`, which has no
+   * `acquisitionCostMinor`/`acquiredAt`/`status` member — this card's
+   * security check is enforced at the type level here and again at the
+   * HTTP contract boundary (`updateInventoryUnitInputSchema`'s `.strict()`),
+   * not by a runtime check in this method.
+   */
+  update(ctx: TenantContext, actingRole: MerchantUserRole, unitId: string, patch: UpdateInventoryUnitFields): void {
+    assertCan({ role: actingRole }, "inventory:manage");
+
+    const unit = this.unitRepo.findById(ctx, unitId);
+    if (!unit) {
+      throw new Error(`Inventory unit not found: ${unitId}`);
+    }
+
+    this.unitRepo.update(ctx, unitId, patch);
+  }
 
   transitionStatus(ctx: TenantContext, actingRole: MerchantUserRole, input: TransitionUnitStatusInput): void {
     assertCan({ role: actingRole }, "inventory:manage");

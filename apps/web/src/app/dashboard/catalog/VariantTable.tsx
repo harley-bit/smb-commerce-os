@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { z } from "zod";
 import type { Variant } from "@smb-os/contracts";
+import Link from "next/link";
 import { Button, TextField } from "../../../components";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
@@ -178,6 +179,7 @@ export function VariantTable({ merchantId, listingId }: VariantTableProps) {
               <th>Name</th>
               <th>Price (minor units)</th>
               <th>Currency</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
@@ -212,6 +214,11 @@ export function VariantTable({ merchantId, listingId }: VariantTableProps) {
                       value={draft.currency}
                       onChange={(event) => updateDraft(variant.id, { currency: event.target.value })}
                     />
+                  </td>
+                  <td>
+                    <Link href={`/dashboard/catalog/${listingId}/variants/${variant.id}/units?merchantId=${merchantId}`}>
+                      Manage units
+                    </Link>
                   </td>
                 </tr>
               );

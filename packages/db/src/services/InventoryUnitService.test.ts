@@ -275,4 +275,75 @@ describe("InventoryUnitService", () => {
 
     expect(unitRepo.findById(ctxA, id)).toMatchObject({ status: "AVAILABLE" });
   });
+
+  describe("create()", () => {
+    it("creates a unit and captures acquisition data", () => {
+      const ctx = createTenantContext(merchantA);
+
+      const id = service.create(ctx, "ADMIN", {
+        variantId: variantA,
+        locationId: locationA,
+        unitCode: "SN-100",
+        trackingMode: "SERIALIZED",
+        acquisitionCostMinor: 500000,
+        acquiredAt: "2026-09-08T00:00:00.000Z",
+      });
+
+      expect(unitRepo.findById(ctx, id)).toMatchObject({
+        unitCode: "SN-100",
+        status: "AVAILABLE",
+        acquisitionCostMinor: 500000,
+        acquiredAt: "2026-09-08T00:00:00.000Z",
+      });
+    });
+
+    it("STAFF cannot create a unit — inventory:manage is ADMIN/OWNER only", () => {
+      const ctx = createTenantContext(merchantA);
+
+      expect(() =>
+        service.create(ctx, "STAFF", {
+          variantId: variantA,
+          locationId: locationA,
+          unitCode: "SN-101",
+          trackingMode: "SERIALIZED",
+          acquisitionCostMinor: 500000,
+          acquiredAt: "2026-09-08T00:00:00.000Z",
+        }),
+      ).toThrow(/not permitted/i);
+    });
+  });
+
+  describe("update()", () => {
+    it("patches unitCode/expectedLifeMonths/conditionGrade", () => {
+      const ctx = createTenantContext(merchantA);
+      const id = createUnit(ctx);
+
+      service.update(ctx, "ADMIN", id, { unitCode: "SN-001-RELABELED", conditionGrade: "B" });
+
+      expect(unitRepo.findById(ctx, id)).toMatchObject({ unitCode: "SN-001-RELABELED", conditionGrade: "B" });
+    });
+
+    it("STAFF cannot edit a unit — inventory:manage is ADMIN/OWNER only", () => {
+      const ctx = createTenantContext(merchantA);
+      const id = createUnit(ctx);
+
+      expect(() => service.update(ctx, "STAFF", id, { unitCode: "HIJACKED" })).toThrow(/not permitted/i);
+      expect(unitRepo.findById(ctx, id)).toMatchObject({ unitCode: "SN-001" });
+    });
+
+    it("throws for an unknown unit id", () => {
+      const ctx = createTenantContext(merchantA);
+
+      expect(() => service.update(ctx, "ADMIN", generateUuidV7(), { unitCode: "X" })).toThrow(/not found/i);
+    });
+
+    it("is tenant-scoped — cannot edit another merchant's unit", () => {
+      const ctxA = createTenantContext(merchantA);
+      const ctxB = createTenantContext(generateUuidV7());
+      const id = createUnit(ctxA);
+
+      expect(() => service.update(ctxB, "ADMIN", id, { unitCode: "HIJACKED" })).toThrow(/not found/i);
+      expect(unitRepo.findById(ctxA, id)).toMatchObject({ unitCode: "SN-001" });
+    });
+  });
 });

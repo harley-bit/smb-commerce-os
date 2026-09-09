@@ -77,6 +77,7 @@ export {
   type InventoryUnitTrackingMode,
   type InventoryUnitStatus,
   type CreateInventoryUnitInput,
+  type UpdateInventoryUnitFields,
 } from "./repositories/InventoryUnitRepository.js";
 export {
   InventoryUnitService,

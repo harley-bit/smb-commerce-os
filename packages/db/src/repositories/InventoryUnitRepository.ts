@@ -34,6 +34,21 @@ export interface CreateInventoryUnitInput {
 }
 
 /**
+ * Deliberately excludes `acquisitionCostMinor`/`acquiredAt` — this card's
+ * security check, "acquisition data captured now — impossible to
+ * backfill": once a unit is created, only its label/location/expected-life/
+ * condition-grade fields can change through this method. Status changes go
+ * through `updateStatus` (the `InventoryUnitService` state machine), not
+ * this method.
+ */
+export interface UpdateInventoryUnitFields {
+  unitCode?: string;
+  locationId?: string;
+  expectedLifeMonths?: number;
+  conditionGrade?: string;
+}
+
+/**
  * `inventory_units.merchant_id` scopes every query, per `docs/design/07`
  * Control #1. `create` always starts a unit in `AVAILABLE` — every other
  * status is reached only through `updateStatus`, which is the enforcement
@@ -74,6 +89,14 @@ export class InventoryUnitRepository extends TenantScopedRepository<typeof inven
       .from(inventoryUnits)
       .where(and(this.scope(ctx), eq(inventoryUnits.variantId, variantId)))
       .all() as InventoryUnit[];
+  };
+
+  update: RepositoryMethod<[id: string, patch: UpdateInventoryUnitFields], void> = (ctx, id, patch) => {
+    this.conn.db
+      .update(inventoryUnits)
+      .set(patch)
+      .where(and(this.scope(ctx), eq(inventoryUnits.id, id)))
+      .run();
   };
 
   updateStatus: RepositoryMethod<[id: string, status: InventoryUnitStatus, occurredAt: string], void> = (
