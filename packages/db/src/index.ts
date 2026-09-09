@@ -312,6 +312,11 @@ export {
   type DamageClaimCustomerNotifier,
 } from "./services/DamageClaimService.js";
 export {
+  MerchantUserService,
+  type RoleChangeEvent,
+  type RoleChangeNotifier,
+} from "./services/MerchantUserService.js";
+export {
   verifyStripeWebhookSignature,
   type WebhookVerificationOptions,
   type WebhookVerificationResult,

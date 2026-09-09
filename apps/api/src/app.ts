@@ -10,6 +10,7 @@ import {
   SimulatedDepositHoldProvider,
   createConnection as createDbConnection,
   type Connection,
+  type RoleChangeNotifier,
 } from "@smb-os/db";
 import type { ConnectAccountProvider, DepositHoldProvider, MediaUploadProvider } from "@smb-os/domain";
 import { problemType, sendProblem } from "./problemDetails.js";
@@ -20,6 +21,7 @@ import { registerOrderRoutes } from "./routes/orders.js";
 import { registerFulfillmentRoutes } from "./routes/fulfillment.js";
 import { registerDamageClaimRoutes } from "./routes/damageClaims.js";
 import { registerConnectRoutes } from "./routes/connect.js";
+import { registerTeamRoutes } from "./routes/team.js";
 import { registerListingRoutes } from "./routes/listings.js";
 import { registerResourceRoutes } from "./routes/resources.js";
 import { registerLocationRoutes } from "./routes/locations.js";
@@ -115,6 +117,14 @@ export interface BuildAppOptions {
    * this codebase (D094) — no Stripe platform account is provisioned yet.
    */
   depositHoldProvider?: DepositHoldProvider;
+  /**
+   * `docs/cards/D120.md` security check — "role changes audit-logged and
+   * notified to owners". Same optional, default-no-op injected-callback
+   * shape as every other notifier in this codebase (D069, D076, D094) —
+   * fires once per current OWNER, after `./routes/team.ts`'s role
+   * assignment has already been durably audit-logged.
+   */
+  onRoleChanged?: RoleChangeNotifier;
 }
 
 const REQUEST_ID_HEADER = "x-request-id";
@@ -223,6 +233,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   registerConnectRoutes(app, connection, options.connectAccountProvider ?? new SimulatedConnectAccountProvider(), {
     webBaseUrl: options.webBaseUrl ?? "http://localhost:3000",
   });
+  registerTeamRoutes(app, connection, options.onRoleChanged ?? (() => undefined));
 
   app.addHook("onSend", async (request, reply, payload) => {
     void reply.header(REQUEST_ID_HEADER, request.id);
