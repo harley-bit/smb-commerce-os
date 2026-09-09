@@ -11,6 +11,7 @@ import { registerBookingRoutes } from "./routes/bookings.js";
 import { registerConnectRoutes } from "./routes/connect.js";
 import { registerListingRoutes } from "./routes/listings.js";
 import { registerResourceRoutes } from "./routes/resources.js";
+import { registerLocationRoutes } from "./routes/locations.js";
 import { registerVariantRoutes } from "./routes/variants.js";
 import { registerInventoryUnitRoutes } from "./routes/inventoryUnits.js";
 import { registerMerchantRoutes } from "./routes/merchants.js";
@@ -172,7 +173,8 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   registerListingRoutes(app, connection);
   registerVariantRoutes(app, connection);
   registerInventoryUnitRoutes(app, connection);
-  registerResourceRoutes(app, connection);
+  registerResourceRoutes(app, connection, availabilityCache);
+  registerLocationRoutes(app, connection);
   registerMerchantRoutes(app, connection, authProvider);
   registerAvailabilityRoutes(app, connection, availabilityCache, {
     rateLimit: options.availabilityRateLimit,
