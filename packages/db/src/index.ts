@@ -99,6 +99,7 @@ export {
   type CreateOrderInput,
   type AddOrderLineInput,
   type OrderTotals,
+  type ContactDetails,
 } from "./repositories/OrderRepository.js";
 export {
   CartService,
@@ -334,3 +335,16 @@ export {
   type RefundOrderLineInput,
   type RefundOrderLineResult,
 } from "./services/RefundService.js";
+export {
+  CheckoutConsentRepository,
+  type CheckoutConsent,
+  type RecordConsentInput,
+} from "./repositories/CheckoutConsentRepository.js";
+export {
+  CheckoutDetailsService,
+  OrderNotFoundError as CheckoutOrderNotFoundError,
+  NotOrderOwnerError,
+  OrderNotCheckoutableError,
+  MissingTermsVersionError,
+  type SubmitCheckoutDetailsInput,
+} from "./services/CheckoutDetailsService.js";

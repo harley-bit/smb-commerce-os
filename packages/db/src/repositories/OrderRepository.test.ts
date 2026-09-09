@@ -215,4 +215,35 @@ describe("OrderRepository", () => {
 
     expect(results.map((order) => order.id)).toEqual([orderA2, orderA1]);
   });
+
+  it("updateContactDetails() cannot modify another merchant's order", () => {
+    const ctxA = createTenantContext(merchantA);
+    const ctxB = createTenantContext(merchantB);
+
+    const orderA = repo.create(ctxA, { customerUserId: userA, status: "CART", currency: "USD" });
+
+    repo.updateContactDetails(ctxB, orderA, {
+      contactName: "Attacker",
+      contactEmail: "attacker@example.com",
+    });
+
+    expect(repo.findById(ctxA, orderA)).toMatchObject({ contactName: null, contactEmail: null });
+  });
+
+  it("updateContactDetails() sets contact details for the owning merchant", () => {
+    const ctxA = createTenantContext(merchantA);
+
+    const orderA = repo.create(ctxA, { customerUserId: userA, status: "CART", currency: "USD" });
+    repo.updateContactDetails(ctxA, orderA, {
+      contactName: "Ada Lovelace",
+      contactEmail: "ada@example.com",
+      contactPhone: "+15551234567",
+    });
+
+    expect(repo.findById(ctxA, orderA)).toMatchObject({
+      contactName: "Ada Lovelace",
+      contactEmail: "ada@example.com",
+      contactPhone: "+15551234567",
+    });
+  });
 });

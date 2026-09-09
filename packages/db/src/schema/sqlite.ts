@@ -467,6 +467,11 @@ export const orders = sqliteTable("orders", {
   totalMinor: integer("total_minor").notNull(),
   placedAt: text("placed_at"),
   cancelledAt: text("cancelled_at"),
+  // `docs/cards/D128.md` — checkout contact details. Nullable: unset until
+  // the customer submits them at checkout; never required at cart creation.
+  contactName: text("contact_name"),
+  contactEmail: text("contact_email"),
+  contactPhone: text("contact_phone"),
 });
 
 /**
@@ -505,6 +510,43 @@ export const orderLines = sqliteTable(
   },
   (table) => [
     index("order_lines_merchant_order_idx").on(
+      table.merchantId,
+      table.orderId,
+    ),
+  ],
+);
+
+/**
+ * `docs/cards/D128.md`. Append-only evidence of terms-of-service consent at
+ * checkout — `docs/design/07`'s repudiation-defence mitigation ("Explicit
+ * consent captured at checkout with version of terms and timestamp"). One
+ * row per consent action (never updated/deleted), so re-consenting to a
+ * later `terms_version` adds a new row rather than overwriting history —
+ * the same append-only shape as `audit_log`, which every write here is also
+ * mirrored into (`CheckoutConsentService`) so the consent is chained
+ * tamper-evident evidence, not just a plain row a merchant could quietly
+ * edit.
+ */
+export const checkoutConsents = sqliteTable(
+  "checkout_consents",
+  {
+    id: text("id").primaryKey(),
+    merchantId: text("merchant_id")
+      .notNull()
+      .references(() => merchants.id),
+    orderId: text("order_id")
+      .notNull()
+      .references(() => orders.id),
+    customerUserId: text("customer_user_id")
+      .notNull()
+      .references(() => users.id),
+    termsVersion: text("terms_version").notNull(),
+    consentedAt: text("consented_at").notNull(),
+    ip: text("ip"),
+    userAgent: text("user_agent"),
+  },
+  (table) => [
+    index("checkout_consents_merchant_order_idx").on(
       table.merchantId,
       table.orderId,
     ),

@@ -25,6 +25,9 @@ export interface Order {
   totalMinor: number;
   placedAt: string | null;
   cancelledAt: string | null;
+  contactName: string | null;
+  contactEmail: string | null;
+  contactPhone: string | null;
 }
 
 export interface CreateOrderInput {
@@ -64,6 +67,12 @@ export interface OrderTotals {
   subtotalMinor: number;
   taxMinor: number;
   totalMinor: number;
+}
+
+export interface ContactDetails {
+  contactName: string;
+  contactEmail: string;
+  contactPhone?: string;
 }
 
 /**
@@ -145,6 +154,22 @@ export class OrderRepository extends TenantScopedRepository<typeof orders.mercha
     this.conn.db
       .update(orders)
       .set(totals)
+      .where(and(this.scope(ctx), eq(orders.id, orderId)))
+      .run();
+  };
+
+  updateContactDetails: RepositoryMethod<[orderId: string, details: ContactDetails], void> = (
+    ctx,
+    orderId,
+    details,
+  ) => {
+    this.conn.db
+      .update(orders)
+      .set({
+        contactName: details.contactName,
+        contactEmail: details.contactEmail,
+        contactPhone: details.contactPhone ?? null,
+      })
       .where(and(this.scope(ctx), eq(orders.id, orderId)))
       .run();
   };
