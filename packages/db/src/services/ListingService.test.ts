@@ -263,6 +263,106 @@ describe("ListingService", () => {
     expect(service.findPublishedBySlug(ctxB, "a-product")).toBeUndefined();
   });
 
+  describe("listPublishedPage() — docs/cards/D141.md's cursor pagination", () => {
+    function seedFivePublishedProducts(ctx: ReturnType<typeof createTenantContext>): void {
+      for (const name of ["Alpha", "Bravo", "Charlie", "Delta", "Echo"]) {
+        service.create(ctx, "OWNER", {
+          mode: "PRODUCT",
+          name,
+          slug: name.toLowerCase(),
+          status: "PUBLISHED",
+          createdAt: "2026-09-08T00:00:00.000Z",
+        });
+      }
+    }
+
+    it("returns the first `limit` published listings, in a stable id order, plus a cursor for the next page", () => {
+      const ctx = createTenantContext(merchantA);
+      seedFivePublishedProducts(ctx);
+
+      const page = service.listPublishedPage(ctx, { limit: 2 });
+
+      expect(page.items).toHaveLength(2);
+      expect(page.nextCursor).toBe(page.items.at(1)?.id);
+    });
+
+    it("walking the cursor forward visits every listing exactly once, with no duplicates or gaps", () => {
+      const ctx = createTenantContext(merchantA);
+      seedFivePublishedProducts(ctx);
+
+      const seen: string[] = [];
+      let cursor: string | undefined;
+      for (let i = 0; i < 10; i++) {
+        const page = service.listPublishedPage(ctx, { limit: 2, cursor });
+        seen.push(...page.items.map((l) => l.id));
+        if (page.nextCursor === null) break;
+        cursor = page.nextCursor;
+      }
+
+      expect(seen).toHaveLength(5);
+      expect(new Set(seen).size).toBe(5);
+    });
+
+    it("returns nextCursor: null once the last page is reached", () => {
+      const ctx = createTenantContext(merchantA);
+      seedFivePublishedProducts(ctx);
+
+      const page = service.listPublishedPage(ctx, { limit: 10 });
+
+      expect(page.items).toHaveLength(5);
+      expect(page.nextCursor).toBeNull();
+    });
+
+    it("combines the mode filter with pagination", () => {
+      const ctx = createTenantContext(merchantA);
+      seedFivePublishedProducts(ctx);
+      service.create(ctx, "OWNER", {
+        mode: "SERVICE",
+        name: "Haircut",
+        slug: "haircut",
+        status: "PUBLISHED",
+        createdAt: "2026-09-08T00:00:00.000Z",
+      });
+
+      const page = service.listPublishedPage(ctx, { mode: "SERVICE", limit: 10 });
+
+      expect(page.items.map((l) => l.name)).toEqual(["Haircut"]);
+    });
+
+    it("never returns a DRAFT or ARCHIVED listing on any page", () => {
+      const ctx = createTenantContext(merchantA);
+      seedFivePublishedProducts(ctx);
+      service.create(ctx, "OWNER", {
+        mode: "PRODUCT",
+        name: "Unfinished Draft",
+        slug: "unfinished-draft-page",
+        status: "DRAFT",
+        createdAt: "2026-09-08T00:00:00.000Z",
+      });
+
+      const page = service.listPublishedPage(ctx, { limit: 10 });
+
+      expect(page.items.map((l) => l.name)).not.toContain("Unfinished Draft");
+    });
+
+    it("is tenant-isolated via the repository's scope", () => {
+      const ctxA = createTenantContext(merchantA);
+      const ctxB = createTenantContext(merchantB);
+      seedFivePublishedProducts(ctxA);
+
+      expect(service.listPublishedPage(ctxB, { limit: 10 }).items).toEqual([]);
+    });
+
+    it("falls back to the first page when given a stale/unknown cursor (fails open, not closed)", () => {
+      const ctx = createTenantContext(merchantA);
+      seedFivePublishedProducts(ctx);
+
+      const page = service.listPublishedPage(ctx, { limit: 2, cursor: "no-such-id" });
+
+      expect(page.items).toHaveLength(2);
+    });
+  });
+
   it("service methods are cross-tenant isolated via the repository's scope", () => {
     const ctxA = createTenantContext(merchantA);
     const ctxB = createTenantContext(merchantB);

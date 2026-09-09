@@ -688,4 +688,65 @@ describe("GET /v1/m/:slug/listings", () => {
 
     expect(res.statusCode).toBe(429);
   });
+
+  describe("?limit — cursor-based pagination (docs/cards/D141.md)", () => {
+    it("returns at most `limit` listings and an X-Next-Cursor header when more remain", async () => {
+      const fx = await setupFixture();
+      const app = buildApp({ connection: fx.connection });
+
+      const res = await app.inject({ method: "GET", url: `/v1/m/${fx.slug}/listings?limit=2` });
+
+      expect(res.statusCode).toBe(200);
+      const body = res.json() as Array<{ id: string }>;
+      expect(body).toHaveLength(2);
+      expect(res.headers["x-next-cursor"]).toBe(body[1].id);
+    });
+
+    it("walking the cursor forward returns the remaining listings with no X-Next-Cursor header on the last page", async () => {
+      const fx = await setupFixture();
+      const app = buildApp({ connection: fx.connection });
+
+      const first = await app.inject({ method: "GET", url: `/v1/m/${fx.slug}/listings?limit=2` });
+      const firstBody = first.json() as Array<{ id: string; name: string }>;
+      const cursor = first.headers["x-next-cursor"] as string;
+
+      const second = await app.inject({ method: "GET", url: `/v1/m/${fx.slug}/listings?limit=2&cursor=${cursor}` });
+      const secondBody = second.json() as Array<{ id: string; name: string }>;
+
+      expect(secondBody).toHaveLength(1);
+      expect(second.headers["x-next-cursor"]).toBeUndefined();
+      expect([...firstBody, ...secondBody].map((l) => l.name).sort()).toEqual(["Camping Tent", "Haircut", "Wool Sweater"]);
+    });
+
+    it("combines the mode filter with pagination", async () => {
+      const fx = await setupFixture();
+      const app = buildApp({ connection: fx.connection });
+
+      const res = await app.inject({ method: "GET", url: `/v1/m/${fx.slug}/listings?mode=PRODUCT&limit=10` });
+      const body = res.json() as Array<{ mode: string }>;
+
+      expect(body.every((l) => l.mode === "PRODUCT")).toBe(true);
+    });
+
+    it("rejects a non-positive or non-numeric limit", async () => {
+      const fx = await setupFixture();
+      const app = buildApp({ connection: fx.connection });
+
+      const zero = await app.inject({ method: "GET", url: `/v1/m/${fx.slug}/listings?limit=0` });
+      const notANumber = await app.inject({ method: "GET", url: `/v1/m/${fx.slug}/listings?limit=abc` });
+
+      expect(zero.statusCode).toBe(400);
+      expect(notANumber.statusCode).toBe(400);
+    });
+
+    it("has no offset/page query parameter at all — an arbitrary offset-shaped param has no effect", async () => {
+      const fx = await setupFixture();
+      const app = buildApp({ connection: fx.connection });
+
+      const withOffset = await app.inject({ method: "GET", url: `/v1/m/${fx.slug}/listings?limit=2&offset=1` });
+      const withoutOffset = await app.inject({ method: "GET", url: `/v1/m/${fx.slug}/listings?limit=2` });
+
+      expect(withOffset.json()).toEqual(withoutOffset.json());
+    });
+  });
 });

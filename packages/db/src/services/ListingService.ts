@@ -3,6 +3,7 @@ import type { MerchantUserRole } from "../repositories/MerchantUserRepository.js
 import type {
   CreateListingInput,
   Listing,
+  ListingMode,
   ListingRepository,
   UpdateListingInput,
 } from "../repositories/ListingRepository.js";
@@ -98,5 +99,37 @@ export class ListingService {
 
   findById(ctx: TenantContext, id: string): Listing | undefined {
     return this.repo.findById(ctx, id);
+  }
+
+  /**
+   * `docs/cards/D141.md`'s cursor-based catalog browse: `cursor` is the
+   * `id` of the last listing the caller has already seen (`undefined` for
+   * the first page), never a numeric offset/page index — there is no
+   * offset concept anywhere in this method's signature or return value,
+   * which is this card's security check answered by construction: a
+   * caller can only walk the catalog forward one page at a time from
+   * where it last left off, never jump to an arbitrary position or infer
+   * the total catalog size from an offset. Listings are sorted by their
+   * own `id` (a UUIDv7, monotonically increasing with creation time) so
+   * the order is stable across calls even as new listings are published
+   * concurrently. An unrecognized/stale cursor (e.g. the referenced
+   * listing was archived since) fails open to the first page rather than
+   * throwing or returning nothing.
+   */
+  listPublishedPage(
+    ctx: TenantContext,
+    options: { mode?: ListingMode; cursor?: string; limit: number },
+  ): { items: Listing[]; nextCursor: string | null } {
+    const filtered = this.listPublished(ctx)
+      .filter((listing) => options.mode === undefined || listing.mode === options.mode)
+      .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+
+    const cursorIndex = options.cursor === undefined ? -1 : filtered.findIndex((listing) => listing.id === options.cursor);
+    const start = cursorIndex + 1;
+
+    const items = filtered.slice(start, start + options.limit);
+    const lastItem = items.at(-1);
+    const nextCursor = lastItem !== undefined && start + items.length < filtered.length ? lastItem.id : null;
+    return { items, nextCursor };
   }
 }

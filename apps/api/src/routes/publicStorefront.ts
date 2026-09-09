@@ -162,16 +162,40 @@ export function registerPublicStorefrontRoutes(
     return reply.code(200).send(profile);
   });
 
-  app.get<{ Params: { slug: string }; Querystring: { mode?: string } }>(
+  /**
+   * `docs/cards/D141.md`'s catalog browse pagination: `limit` is optional
+   * and, when omitted, this route behaves exactly as before (the whole
+   * published catalog in one call) — every existing caller (the web
+   * storefront's `MerchantPageView.tsx`, the mobile app's initial `Home`
+   * load) is unaffected. When `limit` is given, the response is bounded
+   * to that many listings and an `X-Next-Cursor` response header carries
+   * the opaque cursor (the last listing's own `id`) for the next page —
+   * present only when more listings remain, absent on the last page.
+   * This card's security check ("cursor-based, no offset leakage"): there
+   * is no `offset`/`page` query parameter anywhere on this route — an
+   * arbitrary extra querystring key like `offset` is simply ignored by
+   * Fastify's typed querystring parsing, so a caller can only ever walk
+   * forward from a cursor it was actually handed, never jump to or infer
+   * a numeric position in the catalog.
+   */
+  app.get<{ Params: { slug: string }; Querystring: { mode?: string; cursor?: string; limit?: string } }>(
     "/v1/m/:slug/listings",
     async (request, reply) => {
       if (!limiter.consume(`ip:${request.ip}`)) {
         return sendProblem(request, reply, 429, problemType("rate-limited"), "Too Many Requests", "Too many requests. Try again later.");
       }
 
-      const { mode } = request.query;
+      const { mode, cursor, limit: limitParam } = request.query;
       if (mode !== undefined && !LISTING_MODES.includes(mode as ListingMode)) {
         return sendProblem(request, reply, 400, problemType("bad-request"), "Bad Request", "mode must be PRODUCT, SERVICE, or RENTAL.");
+      }
+
+      let limit: number | undefined;
+      if (limitParam !== undefined) {
+        limit = Number(limitParam);
+        if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+          return sendProblem(request, reply, 400, problemType("bad-request"), "Bad Request", "limit must be an integer between 1 and 100.");
+        }
       }
 
       const { merchants, listings } = await getServices();
@@ -181,11 +205,20 @@ export function registerPublicStorefrontRoutes(
       }
 
       const ctx = createTenantContext(merchant.id);
-      const published = listings
-        .listPublished(ctx)
-        .filter((listing) => mode === undefined || listing.mode === mode)
-        .map(toPublicListing);
-      return reply.code(200).send(published);
+
+      if (limit === undefined) {
+        const published = listings
+          .listPublished(ctx)
+          .filter((listing) => mode === undefined || listing.mode === mode)
+          .map(toPublicListing);
+        return reply.code(200).send(published);
+      }
+
+      const page = listings.listPublishedPage(ctx, { mode: mode as ListingMode | undefined, cursor, limit });
+      if (page.nextCursor !== null) {
+        reply.header("X-Next-Cursor", page.nextCursor);
+      }
+      return reply.code(200).send(page.items.map(toPublicListing));
     },
   );
 
