@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ServiceDetailView } from "./ServiceDetailView";
+import { computeMonthWindow, monthLabel } from "./availabilityWindow";
 
 const SLUG = "acme-rentals";
 const LISTING_SLUG = "haircut";
@@ -96,7 +97,10 @@ describe("ServiceDetailView", () => {
 
     await screen.findByRole("heading", { name: "Haircut" });
     expect(screen.getByText(/no.*available/i)).toBeInTheDocument();
-    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+    // Month-navigation buttons (D125) are expected even with no free slots;
+    // only slot buttons (their name carries the "start–end UTC" label) must
+    // be absent.
+    expect(screen.queryByRole("button", { name: /–.*UTC/ })).not.toBeInTheDocument();
   });
 
   it("shows a message when the service has no resource assigned yet, without calling availability", async () => {
@@ -135,5 +139,46 @@ describe("ServiceDetailView", () => {
     render(<ServiceDetailView slug={SLUG} listingSlug={LISTING_SLUG} />);
 
     expect(await screen.findByRole("alert")).toHaveTextContent(/could not.*find/i);
+  });
+
+  it("shows month navigation and refetches availability for the navigated month — D125 deliverable", async () => {
+    const user = userEvent.setup();
+    const fetchMock = mockServiceDetail({ free: [] });
+
+    render(<ServiceDetailView slug={SLUG} listingSlug={LISTING_SLUG} />);
+
+    const now = new Date();
+    await screen.findByText(monthLabel(computeMonthWindow(now, 0).windowStart));
+
+    await user.click(screen.getByRole("button", { name: /next month/i }));
+
+    await screen.findByText(monthLabel(computeMonthWindow(now, 1).windowStart));
+
+    const availabilityCalls = fetchMock.mock.calls.filter(
+      ([url]) => typeof url === "string" && url.includes("/availability"),
+    );
+    expect(availabilityCalls).toHaveLength(2);
+  });
+
+  it("disables Previous month on the initial month", async () => {
+    mockServiceDetail({ free: [] });
+
+    render(<ServiceDetailView slug={SLUG} listingSlug={LISTING_SLUG} />);
+
+    expect(await screen.findByRole("button", { name: /previous month/i })).toBeDisabled();
+  });
+
+  it("disables Next month once navigating further would exceed the 90-day cap — this card's security check", async () => {
+    const user = userEvent.setup();
+    mockServiceDetail({ free: [] });
+
+    render(<ServiceDetailView slug={SLUG} listingSlug={LISTING_SLUG} />);
+
+    const nextButton = await screen.findByRole("button", { name: /next month/i });
+    for (let i = 0; i < 6 && !(nextButton as HTMLButtonElement).disabled; i += 1) {
+      await user.click(nextButton);
+    }
+
+    expect(nextButton).toBeDisabled();
   });
 });
