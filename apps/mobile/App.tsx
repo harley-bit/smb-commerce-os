@@ -66,6 +66,7 @@ export default function App() {
           onGoBack={() => dispatch({ type: "goBack" })}
           onBuy={() => dispatch({ type: "push", screen: { name: "Checkout", params: { slug } } })}
           onBook={() => dispatch({ type: "push", screen: { name: "Checkout", params: { slug } } })}
+          onReserveRental={() => dispatch({ type: "push", screen: { name: "Checkout", params: { slug } } })}
         />
         <StatusBar style="auto" />
       </View>

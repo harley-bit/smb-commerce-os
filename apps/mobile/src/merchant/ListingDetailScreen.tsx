@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
-import type { PublicVariant } from "@smb-os/contracts";
+import type { PublicRentalVariant, PublicVariant } from "@smb-os/contracts";
 import { Button } from "../components/Button";
 import { API_BASE_URL } from "../auth/apiConfig";
 import { resolveListingMode } from "./resolveListingMode";
 import { ProductDetailScreen } from "./ProductDetailScreen";
 import { ServiceDetailScreen } from "./ServiceDetailScreen";
+import { RentalDetailScreen } from "./RentalDetailScreen";
 import type { FreeInterval } from "./fetchServiceAvailability";
 
 export interface ListingDetailScreenProps {
@@ -15,6 +16,7 @@ export interface ListingDetailScreenProps {
   onGoBack: () => void;
   onBuy: (variant: PublicVariant) => void;
   onBook: (interval: FreeInterval) => void;
+  onReserveRental: (variant: PublicRentalVariant, startDate: string, endDate: string) => void;
 }
 
 type ModeState = { kind: "loading" } | { kind: "not-found" } | { kind: "unsupported" } | { kind: "resolved"; mode: "PRODUCT" | "SERVICE" | "RENTAL" };
@@ -29,7 +31,15 @@ type ModeState = { kind: "loading" } | { kind: "not-found" } | { kind: "unsuppor
  * fetch-and-validate against `@smb-os/contracts` — this wrapper never
  * substitutes for that.
  */
-export function ListingDetailScreen({ slug, listingSlug, canGoBack, onGoBack, onBuy, onBook }: ListingDetailScreenProps): React.JSX.Element {
+export function ListingDetailScreen({
+  slug,
+  listingSlug,
+  canGoBack,
+  onGoBack,
+  onBuy,
+  onBook,
+  onReserveRental,
+}: ListingDetailScreenProps): React.JSX.Element {
   const [state, setState] = useState<ModeState>({ kind: "loading" });
 
   useEffect(() => {
@@ -73,7 +83,7 @@ export function ListingDetailScreen({ slug, listingSlug, canGoBack, onGoBack, on
     );
   }
 
-  if (state.kind === "unsupported" || state.mode === "RENTAL") {
+  if (state.kind === "unsupported") {
     return (
       <View style={styles.container}>
         <Text style={styles.notice}>This listing isn&apos;t available in the app yet.</Text>
@@ -84,6 +94,12 @@ export function ListingDetailScreen({ slug, listingSlug, canGoBack, onGoBack, on
 
   if (state.mode === "SERVICE") {
     return <ServiceDetailScreen slug={slug} listingSlug={listingSlug} canGoBack={canGoBack} onGoBack={onGoBack} onBook={onBook} />;
+  }
+
+  if (state.mode === "RENTAL") {
+    return (
+      <RentalDetailScreen slug={slug} listingSlug={listingSlug} canGoBack={canGoBack} onGoBack={onGoBack} onReserve={onReserveRental} />
+    );
   }
 
   return <ProductDetailScreen slug={slug} listingSlug={listingSlug} canGoBack={canGoBack} onGoBack={onGoBack} onBuy={onBuy} />;
