@@ -174,6 +174,59 @@ def next_day_id(day_id: str, offset: int) -> str:
     return f"D{n:03d}"
 
 
+def try_self_heal_stale_pointer(before: str) -> str | None:
+    """A card session sometimes closes its log/calendar/commit correctly but
+    forgets to update BUILD_STATE.md's own '## Current card' heading (seen on
+    D139, D140, D143). That heading's Day ID is the only thing get_current_card()
+    reads, so a real Done card can look like a stall. If the card's own log
+    says Outcome: Done, mechanically advance the heading's Day ID by one,
+    commit that fix, and return the new current card -- without touching
+    anything else in the file. Returns None if the log doesn't say Done (a
+    real Carried/Blocked stall, which must not be auto-advanced)."""
+    log_file = LOGS_DIR / f"{before}.md"
+    if not log_file.exists():
+        return None
+    log_text = log_file.read_text()
+    if not re.search(r"\*\*Outcome:\*\*\s*Done\b", log_text):
+        return None
+
+    text = BUILD_STATE.read_text()
+    parts = text.split("## Current card", 1)
+    if len(parts) < 2:
+        return None
+    head, tail = parts
+    after = next_day_id(before, 1)
+    fixed_tail, count = re.subn(rf"`{before}`", f"`{after}`", tail, count=1)
+    if count == 0:
+        return None
+    new_text = head + "## Current card" + fixed_tail
+    BUILD_STATE.write_text(new_text)
+
+    if get_current_card() != after:
+        # Something about the substitution didn't land as expected -- revert
+        # rather than leave BUILD_STATE.md in an inconsistent state.
+        BUILD_STATE.write_text(text)
+        return None
+
+    log(f"Self-heal: {before}'s log says Done but the current-card heading still "
+        f"named {before}. Advanced it to {after} mechanically.")
+    subprocess.run(["git", "add", "docs/BUILD_STATE.md"], cwd=REPO, check=True)
+    subprocess.run(
+        [
+            "git", "commit", "-m",
+            f"docs: self-heal stale current-card pointer, {before} -> {after}\n\n"
+            f"{before}'s own session closed its log as Done but left "
+            f"BUILD_STATE.md's heading unchanged. run_build_loop.py detected "
+            f"this and mechanically advanced the pointer rather than treating "
+            f"it as a stall.\n\n"
+            f"Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>",
+        ],
+        cwd=REPO,
+        check=True,
+    )
+    return after
+
+
 def upcoming_estimates(start_day_id: str, limit: int) -> list[tuple[str, float]]:
     result = []
     for i in range(limit):
@@ -327,6 +380,15 @@ def run_one_card(sleep_after: int) -> int:
         if sleep_after > 0:
             time.sleep(sleep_after)
         return EXIT_OK
+
+    if returncode == 0:
+        healed = try_self_heal_stale_pointer(before)
+        if healed is not None:
+            log(f"{before} -> Done (pointer self-healed). Next card: {healed}. ({elapsed:.0f}s)")
+            record_card_timing(before, elapsed)
+            if sleep_after > 0:
+                time.sleep(sleep_after)
+            return EXIT_OK
 
     if returncode != 0:
         log(f"claude exited {returncode} and {before} did not advance ({elapsed:.0f}s). Stalled.")
