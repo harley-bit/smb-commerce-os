@@ -74,6 +74,17 @@ export class ListingService {
     return this.repo.list(ctx);
   }
 
+  /**
+   * D121's storefront read: unlike `list()`, no `MerchantUserRole` is
+   * accepted here — a storefront visitor has no merchant membership, and
+   * only `PUBLISHED` listings are ever visible to one, across all three
+   * modes on one page (this card's acceptance criterion). Draft and
+   * archived listings never reach this method's caller.
+   */
+  listPublished(ctx: TenantContext): Listing[] {
+    return this.repo.list(ctx).filter((listing) => listing.status === "PUBLISHED");
+  }
+
   findById(ctx: TenantContext, id: string): Listing | undefined {
     return this.repo.findById(ctx, id);
   }

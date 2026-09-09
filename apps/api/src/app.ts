@@ -15,6 +15,7 @@ import {
 import type { ConnectAccountProvider, DepositHoldProvider, MediaUploadProvider } from "@smb-os/domain";
 import { problemType, sendProblem } from "./problemDetails.js";
 import { registerAvailabilityRoutes } from "./routes/availability.js";
+import { registerPublicStorefrontRoutes } from "./routes/publicStorefront.js";
 import { registerBookingRoutes } from "./routes/bookings.js";
 import { registerCalendarRoutes } from "./routes/calendar.js";
 import { registerOrderRoutes } from "./routes/orders.js";
@@ -65,6 +66,8 @@ export interface BuildAppOptions {
   loginRateLimit?: { limit: number; windowMs: number };
   resetRateLimit?: { limit: number; windowMs: number };
   availabilityRateLimit?: { limit: number; windowMs: number };
+  /** `docs/cards/D121.md` — rate limit for the public `GET /v1/m/{slug}` and `GET /v1/m/{slug}/listings` storefront routes. */
+  publicCatalogRateLimit?: { limit: number; windowMs: number };
   /** Injectable for tests that need to write a reservation and observe cache invalidation through the same cache the route reads. */
   availabilityCache?: AvailabilityCache;
   onResetTokenIssued?: ResetTokenNotifier;
@@ -216,6 +219,9 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   registerMerchantRoutes(app, connection, authProvider);
   registerAvailabilityRoutes(app, connection, availabilityCache, {
     rateLimit: options.availabilityRateLimit,
+  });
+  registerPublicStorefrontRoutes(app, connection, {
+    rateLimit: options.publicCatalogRateLimit,
   });
   registerBookingRoutes(app, connection, availabilityCache);
   registerCalendarRoutes(app, connection);

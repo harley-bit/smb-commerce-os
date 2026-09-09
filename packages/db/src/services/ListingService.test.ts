@@ -170,6 +170,57 @@ describe("ListingService", () => {
     expect(service.findById(ctx, id)?.name).toBe("Cotton Sweater");
   });
 
+  it("listPublished() returns only PUBLISHED listings, across all three modes", () => {
+    const ctx = createTenantContext(merchantA);
+    service.create(ctx, "OWNER", {
+      mode: "PRODUCT",
+      name: "Wool Sweater",
+      slug: "wool-sweater",
+      status: "PUBLISHED",
+      createdAt: "2026-09-08T00:00:00.000Z",
+    });
+    service.create(ctx, "OWNER", {
+      mode: "SERVICE",
+      name: "Haircut",
+      slug: "haircut",
+      status: "PUBLISHED",
+      createdAt: "2026-09-08T00:00:00.000Z",
+    });
+    service.create(ctx, "OWNER", {
+      mode: "RENTAL",
+      name: "Tent",
+      slug: "tent",
+      status: "PUBLISHED",
+      createdAt: "2026-09-08T00:00:00.000Z",
+    });
+    service.create(ctx, "OWNER", {
+      mode: "PRODUCT",
+      name: "Unfinished Draft",
+      slug: "unfinished-draft",
+      status: "DRAFT",
+      createdAt: "2026-09-08T00:00:00.000Z",
+    });
+
+    const published = service.listPublished(ctx);
+
+    expect(published.map((l) => l.name).sort()).toEqual(["Haircut", "Tent", "Wool Sweater"]);
+    expect(published.every((l) => l.status === "PUBLISHED")).toBe(true);
+  });
+
+  it("listPublished() is tenant-isolated via the repository's scope", () => {
+    const ctxA = createTenantContext(merchantA);
+    const ctxB = createTenantContext(merchantB);
+    service.create(ctxA, "OWNER", {
+      mode: "PRODUCT",
+      name: "A Product",
+      slug: "a-product",
+      status: "PUBLISHED",
+      createdAt: "2026-09-08T00:00:00.000Z",
+    });
+
+    expect(service.listPublished(ctxB)).toEqual([]);
+  });
+
   it("service methods are cross-tenant isolated via the repository's scope", () => {
     const ctxA = createTenantContext(merchantA);
     const ctxB = createTenantContext(merchantB);
