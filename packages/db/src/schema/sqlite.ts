@@ -597,6 +597,40 @@ export const depositConsents = sqliteTable(
 );
 
 /**
+ * `docs/cards/D148.md` — "Push notifications". One row per device
+ * registration; `platform` distinguishes `ios`/`android` so the same
+ * dispatch code path (`PushNotificationDispatcher`) can be proven to reach
+ * both without discriminating between them. `token` is unique per merchant —
+ * a device re-registering (app reinstall, token rotation) replaces its own
+ * prior row via upsert rather than accumulating stale ones.
+ */
+export const pushDeviceTokens = sqliteTable(
+  "push_device_tokens",
+  {
+    id: text("id").primaryKey(),
+    merchantId: text("merchant_id")
+      .notNull()
+      .references(() => merchants.id),
+    customerUserId: text("customer_user_id")
+      .notNull()
+      .references(() => users.id),
+    platform: text("platform").notNull(),
+    token: text("token").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    index("push_device_tokens_merchant_customer_idx").on(
+      table.merchantId,
+      table.customerUserId,
+    ),
+    uniqueIndex("push_device_tokens_merchant_token_idx").on(
+      table.merchantId,
+      table.token,
+    ),
+  ],
+);
+
+/**
  * `docs/design/03` "Payments and deposits". `provider_ref` is unique per
  * `provider` — the idempotency anchor `06`'s webhook handler looks up before
  * reprocessing an event, so the same provider can never record the same

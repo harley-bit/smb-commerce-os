@@ -587,6 +587,37 @@ export const depositConsents = pgTable(
 );
 
 /**
+ * `docs/cards/D148.md` — the PostgreSQL-dialect twin of
+ * `schema/sqlite.ts`'s `pushDeviceTokens`. See that file for the doc
+ * comment.
+ */
+export const pushDeviceTokens = pgTable(
+  "push_device_tokens",
+  {
+    id: uuid("id").primaryKey(),
+    merchantId: uuid("merchant_id")
+      .notNull()
+      .references(() => merchants.id),
+    customerUserId: uuid("customer_user_id")
+      .notNull()
+      .references(() => users.id),
+    platform: text("platform").notNull(),
+    token: text("token").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    index("push_device_tokens_merchant_customer_idx").on(
+      table.merchantId,
+      table.customerUserId,
+    ),
+    uniqueIndex("push_device_tokens_merchant_token_idx").on(
+      table.merchantId,
+      table.token,
+    ),
+  ],
+);
+
+/**
  * `docs/design/03` "Payments and deposits". `provider_ref` is unique per
  * `provider` — the idempotency anchor `06`'s webhook handler looks up before
  * reprocessing an event, so the same provider can never record the same

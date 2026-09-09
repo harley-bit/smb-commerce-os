@@ -39,6 +39,7 @@ export * from "./payments/depositDisclosure.js";
 export * from "./payments/orderReceipt.js";
 export * from "./media/mediaRetentionPolicy.js";
 export * from "./notifications/transactionalNotifications.js";
+export * from "./notifications/pushNotifications.js";
 
 export function workspaceGraphMarker(): string {
   return "@smb-os/domain";

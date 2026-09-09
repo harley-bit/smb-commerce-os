@@ -13,6 +13,7 @@ import {
   SimulatedRefundProvider,
   createConnection as createDbConnection,
   type Connection,
+  type PushSender,
   type ReceiptEmailNotifier,
   type RoleChangeNotifier,
 } from "@smb-os/db";
@@ -31,6 +32,7 @@ import { registerPublicStorefrontRoutes } from "./routes/publicStorefront.js";
 import { registerCheckoutPaymentRoutes } from "./routes/checkoutPayment.js";
 import { registerOrderConfirmationRoutes } from "./routes/orderConfirmation.js";
 import { registerCustomerOrderRoutes } from "./routes/customerOrders.js";
+import { registerPushTokenRoutes } from "./routes/pushTokens.js";
 import { registerBookingRoutes } from "./routes/bookings.js";
 import { registerCalendarRoutes } from "./routes/calendar.js";
 import { registerOrderRoutes } from "./routes/orders.js";
@@ -179,6 +181,15 @@ export interface BuildAppOptions {
    * defaults to a placeholder set until that storage exists.
    */
   cancellationPolicySet?: CancellationPolicySet;
+  /**
+   * `docs/cards/D148.md` deliverable — "push notifications ... delivered on
+   * both platforms". Same "native/simulated now, real provider later"
+   * precedent as every other delivery-channel seam in this codebase
+   * (D089/D094/D118/D130) — no APNs/FCM account is provisioned yet, so this
+   * defaults to a no-op; the dispatch logic itself (`PushNotificationDispatcher`)
+   * is real and covered by tests, only the actual transport is a stub.
+   */
+  onPushSend?: PushSender;
 }
 
 const REQUEST_ID_HEADER = "x-request-id";
@@ -324,9 +335,13 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       takeRateBasisPoints: options.checkoutTakeRateBasisPoints,
     },
   );
-  registerOrderConfirmationRoutes(app, connection, options.onReceiptEmail ?? (() => undefined), {
-    rateLimit: options.publicCheckoutRateLimit,
-  });
+  registerOrderConfirmationRoutes(
+    app,
+    connection,
+    options.onReceiptEmail ?? (() => undefined),
+    { rateLimit: options.publicCheckoutRateLimit },
+    options.onPushSend ?? (() => undefined),
+  );
   const depositHoldProvider = options.depositHoldProvider ?? new SimulatedDepositHoldProvider();
   registerCustomerOrderRoutes(
     app,
@@ -336,6 +351,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     depositHoldProvider,
     options.cancellationPolicySet ?? DEFAULT_CANCELLATION_POLICY_SET,
   );
+  registerPushTokenRoutes(app, connection, authProvider);
   registerBookingRoutes(app, connection, availabilityCache);
   registerCalendarRoutes(app, connection);
   registerOrderRoutes(app, connection);

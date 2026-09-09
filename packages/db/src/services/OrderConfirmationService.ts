@@ -29,6 +29,27 @@ export interface ReceiptEmailInput {
  */
 export type ReceiptEmailNotifier = (input: ReceiptEmailInput) => void;
 
+export interface OrderConfirmationPushInput {
+  readonly orderId: string;
+  readonly merchantId: string;
+  readonly customerUserId: string;
+  readonly receipt: OrderReceipt;
+}
+
+/**
+ * `docs/cards/D148.md` deliverable — "confirmations ... delivered on both
+ * platforms". Same optional, default-no-op injected-callback shape as
+ * `ReceiptEmailNotifier` above: this service has no opinion on the push
+ * transport (device lookup and the actual send live in the caller's
+ * `PushNotificationDispatcher`) — it just guarantees the callback fires
+ * once per confirmation with the order id and the confirming customer.
+ * Fires unconditionally (unlike the email notifier, which is gated on
+ * `contactEmail`) — a customer with no registered device simply has
+ * nothing to dispatch to, handled by the dispatcher itself, not this call
+ * site.
+ */
+export type OrderConfirmationPushNotifier = (input: OrderConfirmationPushInput) => void;
+
 /**
  * `docs/cards/D131.md` — "Order confirmation". Builds the itemized receipt
  * (`@smb-os/domain`'s `buildOrderReceipt`, this card's acceptance criterion:
@@ -55,6 +76,7 @@ export class OrderConfirmationService {
   constructor(
     private readonly orderRepo: OrderRepository,
     private readonly notifyReceiptEmail: ReceiptEmailNotifier = () => undefined,
+    private readonly notifyPush: OrderConfirmationPushNotifier = () => undefined,
   ) {}
 
   confirmOrder(ctx: TenantContext, input: ConfirmOrderInput): OrderReceipt {
@@ -69,6 +91,7 @@ export class OrderConfirmationService {
     if (order.contactEmail) {
       this.notifyReceiptEmail({ orderId: order.id, contactEmail: order.contactEmail, receipt });
     }
+    this.notifyPush({ orderId: order.id, merchantId: order.merchantId, customerUserId: order.customerUserId, receipt });
 
     return receipt;
   }

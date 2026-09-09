@@ -13,6 +13,7 @@ describe("OrderConfirmationService", () => {
   let orderRepo: OrderRepository;
   let service: OrderConfirmationService;
   let notify: ReturnType<typeof vi.fn>;
+  let notifyPush: ReturnType<typeof vi.fn>;
   let merchantA: string;
   let userId: string;
   let orderId: string;
@@ -25,7 +26,8 @@ describe("OrderConfirmationService", () => {
     const variantRepo = new VariantRepository(connection);
     orderRepo = new OrderRepository(connection);
     notify = vi.fn();
-    service = new OrderConfirmationService(orderRepo, notify);
+    notifyPush = vi.fn();
+    service = new OrderConfirmationService(orderRepo, notify, notifyPush);
 
     merchantA = generateUuidV7();
     userId = generateUuidV7();
@@ -130,6 +132,26 @@ describe("OrderConfirmationService", () => {
     const [call] = notify.mock.calls[0] as [{ contactEmail: string; receipt: { orderId: string } }];
     expect(call.contactEmail).toBe("jamie@example.com");
     expect(call.receipt.orderId).toBe(orderId);
+  });
+
+  it("this card's deliverable (D148): fires the push notifier for the order's own customer, unconditionally", () => {
+    const ctx = createTenantContext(merchantA);
+
+    service.confirmOrder(ctx, { orderId, confirmedAt: "2026-09-09T13:00:00.000Z" });
+
+    expect(notifyPush).toHaveBeenCalledTimes(1);
+    const [call] = notifyPush.mock.calls[0] as [{ orderId: string; customerUserId: string }];
+    expect(call.orderId).toBe(orderId);
+    expect(call.customerUserId).toBe(userId);
+  });
+
+  it("still fires the push notifier even when the order has no contact email on file", () => {
+    const ctx = createTenantContext(merchantA);
+    const bareOrderId = orderRepo.create(ctx, { customerUserId: userId, status: "CART", currency: "USD" });
+
+    service.confirmOrder(ctx, { orderId: bareOrderId, confirmedAt: "2026-09-09T13:00:00.000Z" });
+
+    expect(notifyPush).toHaveBeenCalledTimes(1);
   });
 
   it("does not notify when the order has no contact email on file yet", () => {

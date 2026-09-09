@@ -395,6 +395,8 @@ export {
   type ConfirmOrderInput,
   type ReceiptEmailInput,
   type ReceiptEmailNotifier,
+  type OrderConfirmationPushInput,
+  type OrderConfirmationPushNotifier,
 } from "./services/OrderConfirmationService.js";
 export {
   CustomerOrderHistoryService,
@@ -410,3 +412,14 @@ export {
   type CancelledOrderLineResult,
   type CancelOrderResult,
 } from "./services/CustomerCancellationService.js";
+export {
+  PushDeviceTokenRepository,
+  type PushPlatform,
+  type PushDeviceToken,
+  type RegisterPushDeviceTokenInput,
+} from "./repositories/PushDeviceTokenRepository.js";
+export {
+  PushNotificationDispatcher,
+  type PushSender,
+  type PushSendInput,
+} from "./services/PushNotificationDispatcher.js";

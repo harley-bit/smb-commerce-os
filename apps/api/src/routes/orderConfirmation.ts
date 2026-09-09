@@ -1,12 +1,15 @@
 import type { FastifyInstance } from "fastify";
-import { createTenantContext } from "@smb-os/domain";
+import { buildOrderConfirmationPush, createTenantContext } from "@smb-os/domain";
 import {
   MerchantRepository,
   OrderConfirmationService,
   OrderConfirmationOrderNotFoundError as OrderNotFoundError,
   OrderRepository,
+  PushDeviceTokenRepository,
+  PushNotificationDispatcher,
   runSqliteMigrations,
   type Connection,
+  type PushSender,
   type ReceiptEmailNotifier,
 } from "@smb-os/db";
 import { SlidingWindowRateLimiter } from "../auth/rateLimiter.js";
@@ -25,13 +28,25 @@ interface OrderConfirmationServices {
 function createServiceFactory(
   connection: Connection,
   onReceiptEmail: ReceiptEmailNotifier,
+  sendPush: PushSender,
 ): () => Promise<OrderConfirmationServices> {
   let ready: Promise<OrderConfirmationServices> | null = null;
   return () => {
-    ready ??= runSqliteMigrations(connection).then(() => ({
-      merchants: new MerchantRepository(connection),
-      confirmation: new OrderConfirmationService(new OrderRepository(connection), onReceiptEmail),
-    }));
+    ready ??= runSqliteMigrations(connection).then(() => {
+      const dispatcher = new PushNotificationDispatcher(new PushDeviceTokenRepository(connection), sendPush);
+      return {
+        merchants: new MerchantRepository(connection),
+        confirmation: new OrderConfirmationService(new OrderRepository(connection), onReceiptEmail, (input) => {
+          const ctx = createTenantContext(input.merchantId);
+          const push = buildOrderConfirmationPush({
+            orderId: input.orderId,
+            totalMinor: input.receipt.totalMinor,
+            currency: input.receipt.currency,
+          });
+          dispatcher.dispatch(ctx, input.customerUserId, push);
+        }),
+      };
+    });
     return ready;
   };
 }
@@ -58,8 +73,9 @@ export function registerOrderConfirmationRoutes(
   connection: Connection,
   onReceiptEmail: ReceiptEmailNotifier = () => undefined,
   options: RegisterOrderConfirmationRoutesOptions = {},
+  sendPush: PushSender = () => undefined,
 ): void {
-  const getServices = createServiceFactory(connection, onReceiptEmail);
+  const getServices = createServiceFactory(connection, onReceiptEmail, sendPush);
   const limiter = new SlidingWindowRateLimiter(options.rateLimit?.limit ?? 10, options.rateLimit?.windowMs ?? 60_000);
 
   app.post<{ Params: { slug: string; orderId: string } }>(

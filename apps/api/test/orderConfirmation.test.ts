@@ -5,6 +5,7 @@ import {
   ListingRepository,
   MerchantRepository,
   OrderRepository,
+  PushDeviceTokenRepository,
   UserRepository,
   VariantRepository,
   createConnection,
@@ -17,8 +18,10 @@ const CREATED_AT = "2026-09-08T00:00:00.000Z";
 
 interface Base {
   connection: Connection;
+  merchantId: string;
   slug: string;
   orderId: string;
+  customerUserId: string;
 }
 
 async function setupBase(withContactEmail = true): Promise<Base> {
@@ -26,7 +29,8 @@ async function setupBase(withContactEmail = true): Promise<Base> {
   await runSqliteMigrations(connection);
 
   const merchants = new MerchantRepository(connection);
-  const ctx = createTenantContext(generateUuidV7());
+  const merchantId = generateUuidV7();
+  const ctx = createTenantContext(merchantId);
   const slug = `merchant-${generateUuidV7()}`;
   merchants.create(ctx, {
     name: "Merchant",
@@ -71,7 +75,7 @@ async function setupBase(withContactEmail = true): Promise<Base> {
     });
   }
 
-  return { connection, slug, orderId: cartId };
+  return { connection, merchantId, slug, orderId: cartId, customerUserId };
 }
 
 describe("POST /v1/m/:slug/checkout/:orderId/confirmation", () => {
@@ -141,6 +145,39 @@ describe("POST /v1/m/:slug/checkout/:orderId/confirmation", () => {
     });
 
     expect(response.statusCode).toBe(404);
+  });
+
+  it("D148: dispatches a push notification with no financial detail to every device the customer registered, on both platforms", async () => {
+    const { connection, merchantId, slug, orderId, customerUserId } = await setupBase();
+    const tokens = new PushDeviceTokenRepository(connection);
+    const ctx = createTenantContext(merchantId);
+    tokens.register(ctx, { customerUserId, platform: "ios", token: "ios-token", createdAt: CREATED_AT });
+    tokens.register(ctx, { customerUserId, platform: "android", token: "android-token", createdAt: CREATED_AT });
+
+    const onPushSend = vi.fn();
+    const app = buildApp({ connection, onPushSend });
+
+    await app.inject({ method: "POST", url: `/v1/m/${slug}/checkout/${orderId}/confirmation` });
+
+    expect(onPushSend).toHaveBeenCalledTimes(2);
+    const platforms = onPushSend.mock.calls.map(([call]) => (call as { platform: string }).platform).sort();
+    expect(platforms).toEqual(["android", "ios"]);
+    for (const [call] of onPushSend.mock.calls as [{ notification: { title: string; body: string } }][]) {
+      const rendered = call.notification.title + call.notification.body;
+      expect(rendered).not.toContain("10000");
+      expect(rendered).not.toContain("100.00");
+      expect(rendered).not.toContain("USD");
+    }
+  });
+
+  it("does not dispatch a push notification when the customer has no registered device", async () => {
+    const { connection, slug, orderId } = await setupBase();
+    const onPushSend = vi.fn();
+    const app = buildApp({ connection, onPushSend });
+
+    await app.inject({ method: "POST", url: `/v1/m/${slug}/checkout/${orderId}/confirmation` });
+
+    expect(onPushSend).not.toHaveBeenCalled();
   });
 
   it("is rate-limited per IP", async () => {
