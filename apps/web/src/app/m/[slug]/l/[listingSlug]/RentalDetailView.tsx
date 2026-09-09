@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { PublicRentalDetail } from "@smb-os/contracts";
+import { TextField } from "../../../../../components";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
@@ -43,6 +44,7 @@ export function RentalDetailView({ slug, listingSlug }: RentalDetailViewProps) {
   const [endDate, setEndDate] = useState("");
   const [available, setAvailable] = useState<boolean | null>(null);
   const [selected, setSelected] = useState(false);
+  const [rangeError, setRangeError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -67,14 +69,17 @@ export function RentalDetailView({ slug, listingSlug }: RentalDetailViewProps) {
     setSelected(false);
     if (!variant || !startDate || !endDate) {
       setAvailable(null);
+      setRangeError(null);
       return;
     }
     const from = `${startDate}T00:00:00.000Z`;
     const to = `${endDate}T00:00:00.000Z`;
     if (to <= from) {
       setAvailable(null);
+      setRangeError("The end date must be after the start date.");
       return;
     }
+    setRangeError(null);
     let cancelled = false;
     async function checkAvailability() {
       const response = await fetch(
@@ -125,15 +130,19 @@ export function RentalDetailView({ slug, listingSlug }: RentalDetailViewProps) {
               : `refundable deposit of ${formatMinor(variant.depositMinor, variant.currency)}`}
           </p>
           <div>
-            <label htmlFor="rental-start-date">Start date</label>
-            <input
-              id="rental-start-date"
+            <TextField
+              label="Start date"
               type="date"
               value={startDate}
               onChange={(event) => setStartDate(event.target.value)}
             />
-            <label htmlFor="rental-end-date">End date</label>
-            <input id="rental-end-date" type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} />
+            <TextField
+              label="End date"
+              type="date"
+              value={endDate}
+              onChange={(event) => setEndDate(event.target.value)}
+              error={rangeError ?? undefined}
+            />
           </div>
           {available === false && <p>That date range is not available. Please choose another.</p>}
           {available === true && (

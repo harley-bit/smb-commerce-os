@@ -12,6 +12,23 @@ body {
   background: var(--color-bg);
 }
 
+/* Every page renders its content inside a single top-level <main>; capping
+   its width and centering it here is a one-place fix for readable line
+   length on desktop, with full-bleed padding that scales down on narrow
+   viewports instead of a fixed pixel width that would force horizontal
+   scrolling on mobile. */
+main {
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-4);
+}
+
+@media (max-width: 30rem) {
+  main {
+    padding: var(--space-4) var(--space-3);
+  }
+}
+
 /* Every interactive element gets a visible focus indicator — never
    `outline: none` without a replacement, so keyboard users always see
    where focus is. */
@@ -40,6 +57,9 @@ body {
   border-radius: var(--radius-sm);
   background: var(--color-bg);
   color: var(--color-fg);
+  /* WCAG 2.5.8 (AA): touch targets at least 24x24px, comfortably above that
+     here so inputs stay tappable on phone-sized screens. */
+  min-height: 2.75rem;
 }
 
 .field__input[aria-invalid="true"] {
@@ -58,6 +78,9 @@ body {
   border-radius: var(--radius-md);
   border: 1px solid transparent;
   cursor: pointer;
+  /* WCAG 2.5.8 (AA): touch targets at least 24x24px, comfortably above that
+     here so buttons stay tappable on phone-sized screens. */
+  min-height: 2.75rem;
 }
 
 .btn:disabled {

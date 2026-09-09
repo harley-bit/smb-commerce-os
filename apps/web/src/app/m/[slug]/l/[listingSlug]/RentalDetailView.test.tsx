@@ -101,6 +101,21 @@ describe("RentalDetailView", () => {
     expect(screen.queryByRole("button", { name: /reserve/i })).not.toBeInTheDocument();
   });
 
+  it("shows an accessible error when the end date is before the start date — D135", async () => {
+    const user = userEvent.setup();
+    mockRentalDetail({});
+
+    render(<RentalDetailView slug={SLUG} listingSlug={LISTING_SLUG} />);
+
+    await screen.findByRole("heading", { name: "Camping Tent" });
+    await user.type(screen.getByLabelText(/start date/i), "2026-10-05");
+    await user.type(screen.getByLabelText(/end date/i), "2026-10-01");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/end date must be after the start date/i);
+    expect(screen.getByLabelText(/end date/i)).toHaveAttribute("aria-invalid", "true");
+    expect(screen.queryByRole("button", { name: /reserve/i })).not.toBeInTheDocument();
+  });
+
   it("lets an available date range be selected", async () => {
     const user = userEvent.setup();
     mockRentalDetail({ available: true });

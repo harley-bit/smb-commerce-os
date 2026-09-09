@@ -90,6 +90,27 @@ describe("ServiceDetailView", () => {
     expect(slot).toHaveAttribute("aria-pressed", "true");
   });
 
+  it("lets a free slot be selected via keyboard alone, with no mouse click — D135", async () => {
+    const user = userEvent.setup();
+    mockServiceDetail({
+      free: [{ start: "2026-09-10T09:00:00.000Z", end: "2026-09-10T10:00:00.000Z" }],
+    });
+
+    render(<ServiceDetailView slug={SLUG} listingSlug={LISTING_SLUG} />);
+
+    const slot = await screen.findByRole("button", { name: /2026-09-10/ });
+    expect(slot).toHaveAttribute("aria-pressed", "false");
+
+    for (let i = 0; i < 10 && document.activeElement !== slot; i++) {
+      await user.tab();
+    }
+    expect(slot).toHaveFocus();
+
+    await user.keyboard("{Enter}");
+
+    expect(slot).toHaveAttribute("aria-pressed", "true");
+  });
+
   it("shows no selectable slots when nothing is free", async () => {
     mockServiceDetail({ free: [] });
 
