@@ -1,5 +1,7 @@
 import { useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
+import { Button } from "../components/Button";
+import { TextField } from "../components/TextField";
 import { API_BASE_URL } from "./apiConfig";
 import { expoPkceAdapter } from "./expoPkceAdapter";
 import { ExpoSecureTokenStore } from "./expoSecureTokenStore";
@@ -10,17 +12,27 @@ const deps: AuthClientDeps = { baseUrl: API_BASE_URL, fetchFn: fetch, storage, p
 
 type Status = { kind: "idle" } | { kind: "loading" } | { kind: "signedIn" } | { kind: "error"; message: string };
 
+export interface SignInScreenProps {
+  onSignedIn?: () => void;
+}
+
 /**
  * `docs/cards/D138.md` — Mobile authentication UI: email/password (+ TOTP
  * code, mandatory for every account per `AuthProvider.authenticate`)
- * against the PKCE authorization-code + refresh flow in
- * `./authClient.ts`. All the actual logic lives there and in `./pkce.ts` /
- * `./secureTokenStore.ts`, which are unit-tested; this component is thin
- * glue with no test of its own (no React Native rendering test harness is
- * set up in this app shell yet, same boundary `App.tsx`'s own D137 shell
- * comment describes for `parseMerchantProfile`).
+ * against the PKCE authorization-code + refresh flow in `./authClient.ts`.
+ * All the actual logic lives there and in `./pkce.ts` / `./secureTokenStore.ts`,
+ * which are unit-tested; this component is thin glue with no test of its
+ * own (no React Native rendering test harness is set up in this app shell
+ * yet, same boundary `App.tsx`'s own D137 shell comment describes for
+ * `parseMerchantProfile`).
+ *
+ * `docs/cards/D139.md` — now built from the shared `Button`/`TextField`
+ * (component parity with `apps/web/src/components`) instead of inline
+ * `Pressable`/`TextInput`, and reports a successful sign-in to
+ * `onSignedIn` so `App.tsx`'s navigation stack can leave the `SignIn`
+ * screen.
  */
-export function SignInScreen(): React.JSX.Element {
+export function SignInScreen({ onSignedIn }: SignInScreenProps): React.JSX.Element {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [mfaCode, setMfaCode] = useState("");
@@ -29,7 +41,12 @@ export function SignInScreen(): React.JSX.Element {
   async function handleSignIn(): Promise<void> {
     setStatus({ kind: "loading" });
     const result = await signIn(deps, email, password, mfaCode || undefined);
-    setStatus(result.ok ? { kind: "signedIn" } : { kind: "error", message: result.error });
+    if (result.ok) {
+      setStatus({ kind: "signedIn" });
+      onSignedIn?.();
+    } else {
+      setStatus({ kind: "error", message: result.error });
+    }
   }
 
   async function handleRefresh(): Promise<void> {
@@ -47,12 +64,12 @@ export function SignInScreen(): React.JSX.Element {
     return (
       <View style={styles.container}>
         <Text style={styles.title}>Signed in</Text>
-        <Pressable style={styles.button} onPress={handleRefresh}>
-          <Text style={styles.buttonText}>Refresh session</Text>
-        </Pressable>
-        <Pressable style={styles.button} onPress={handleSignOut}>
-          <Text style={styles.buttonText}>Sign out</Text>
-        </Pressable>
+        <Button variant="secondary" onPress={handleRefresh}>
+          Refresh session
+        </Button>
+        <Button variant="secondary" onPress={handleSignOut}>
+          Sign out
+        </Button>
       </View>
     );
   }
@@ -60,33 +77,19 @@ export function SignInScreen(): React.JSX.Element {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Sign in</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Email"
+      <TextField
+        label="Email"
         autoCapitalize="none"
         autoComplete="email"
         keyboardType="email-address"
         value={email}
         onChangeText={setEmail}
       />
-      <TextInput
-        style={styles.input}
-        placeholder="Password"
-        secureTextEntry
-        autoComplete="password"
-        value={password}
-        onChangeText={setPassword}
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="MFA code (if enrolled)"
-        keyboardType="number-pad"
-        value={mfaCode}
-        onChangeText={setMfaCode}
-      />
-      <Pressable style={styles.button} onPress={handleSignIn} disabled={status.kind === "loading"}>
-        {status.kind === "loading" ? <ActivityIndicator /> : <Text style={styles.buttonText}>Sign in</Text>}
-      </Pressable>
+      <TextField label="Password" secureTextEntry autoComplete="password" value={password} onChangeText={setPassword} />
+      <TextField label="MFA code (if enrolled)" keyboardType="number-pad" value={mfaCode} onChangeText={setMfaCode} />
+      <Button onPress={handleSignIn} loading={status.kind === "loading"}>
+        Sign in
+      </Button>
       {status.kind === "error" ? (
         <Text accessibilityRole="alert" style={styles.error}>
           {status.message}
@@ -99,8 +102,5 @@ export function SignInScreen(): React.JSX.Element {
 const styles = StyleSheet.create({
   container: { flex: 1, justifyContent: "center", padding: 24, gap: 12 },
   title: { fontSize: 20, fontWeight: "600", marginBottom: 8 },
-  input: { borderWidth: 1, borderColor: "#ccc", borderRadius: 6, padding: 10 },
-  button: { backgroundColor: "#111", borderRadius: 6, padding: 12, alignItems: "center" },
-  buttonText: { color: "#fff", fontWeight: "600" },
   error: { color: "#b00020" },
 });
