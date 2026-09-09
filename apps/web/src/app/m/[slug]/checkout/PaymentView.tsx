@@ -82,6 +82,7 @@ export function PaymentView({ slug, orderId }: PaymentViewProps) {
       <main>
         <h1>Payment</h1>
         <p role="status">Payment completed — {formatMinor(success.amountMinor, success.currency)} charged.</p>
+        <a href={`/m/${slug}/checkout/confirmation?orderId=${orderId}`}>View order confirmation</a>
       </main>
     );
   }

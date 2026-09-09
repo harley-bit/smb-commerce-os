@@ -35,6 +35,7 @@ export * from "./payments/reconcilePayout.js";
 export * from "./payments/orderedEventApplication.js";
 export * from "./payments/declineHandling.js";
 export * from "./payments/depositDisclosure.js";
+export * from "./payments/orderReceipt.js";
 export * from "./media/mediaRetentionPolicy.js";
 
 export function workspaceGraphMarker(): string {

@@ -363,3 +363,10 @@ export {
   type AcknowledgeDepositInput,
   type DepositConsentResult,
 } from "./services/CheckoutDepositConsentService.js";
+export {
+  OrderConfirmationService,
+  OrderNotFoundError as OrderConfirmationOrderNotFoundError,
+  type ConfirmOrderInput,
+  type ReceiptEmailInput,
+  type ReceiptEmailNotifier,
+} from "./services/OrderConfirmationService.js";

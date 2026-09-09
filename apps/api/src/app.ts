@@ -11,6 +11,7 @@ import {
   SimulatedPaymentIntentProvider,
   createConnection as createDbConnection,
   type Connection,
+  type ReceiptEmailNotifier,
   type RoleChangeNotifier,
 } from "@smb-os/db";
 import type {
@@ -23,6 +24,7 @@ import { problemType, sendProblem } from "./problemDetails.js";
 import { registerAvailabilityRoutes } from "./routes/availability.js";
 import { registerPublicStorefrontRoutes } from "./routes/publicStorefront.js";
 import { registerCheckoutPaymentRoutes } from "./routes/checkoutPayment.js";
+import { registerOrderConfirmationRoutes } from "./routes/orderConfirmation.js";
 import { registerBookingRoutes } from "./routes/bookings.js";
 import { registerCalendarRoutes } from "./routes/calendar.js";
 import { registerOrderRoutes } from "./routes/orders.js";
@@ -145,6 +147,12 @@ export interface BuildAppOptions {
   /** `docs/cards/D130.md` — the platform take rate charged on a storefront checkout; see `./routes/checkoutPayment.ts`. */
   checkoutTakeRateBasisPoints?: number;
   publicCheckoutRateLimit?: { limit: number; windowMs: number };
+  /**
+   * `docs/cards/D131.md` deliverable — "emailed receipt". Same optional,
+   * default-no-op injected-callback shape as every other notifier in this
+   * codebase (D069, D076, D094, D120); see `./routes/orderConfirmation.ts`.
+   */
+  onReceiptEmail?: ReceiptEmailNotifier;
 }
 
 const REQUEST_ID_HEADER = "x-request-id";
@@ -249,6 +257,9 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       takeRateBasisPoints: options.checkoutTakeRateBasisPoints,
     },
   );
+  registerOrderConfirmationRoutes(app, connection, options.onReceiptEmail ?? (() => undefined), {
+    rateLimit: options.publicCheckoutRateLimit,
+  });
   registerBookingRoutes(app, connection, availabilityCache);
   registerCalendarRoutes(app, connection);
   registerOrderRoutes(app, connection);
