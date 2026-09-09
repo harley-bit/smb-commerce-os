@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  assignListingResourceInputSchema,
   availabilityExceptionSchema,
   availabilityRuleSchema,
   createAvailabilityExceptionInputSchema,
   createAvailabilityRuleInputSchema,
   createResourceInputSchema,
+  listingResourceAssignmentSchema,
   resourceSchema,
   updateAvailabilityExceptionInputSchema,
   updateAvailabilityRuleInputSchema,
@@ -143,5 +145,34 @@ describe("updateAvailabilityExceptionInputSchema", () => {
 
   it("rejects an unknown key", () => {
     expect(() => updateAvailabilityExceptionInputSchema.parse({ resourceId: "x" })).toThrow();
+  });
+});
+
+describe("listingResourceAssignmentSchema", () => {
+  const validAssignment = {
+    id: "01977e6a-0000-7000-8000-000000000010",
+    merchantId: "01977e6a-0000-7000-8000-000000000001",
+    listingId: "01977e6a-0000-7000-8000-000000000011",
+    resourceId: "01977e6a-0000-7000-8000-000000000000",
+    createdAt: "2026-09-08T00:00:00.000Z",
+  };
+
+  it("accepts a well-formed assignment row", () => {
+    expect(listingResourceAssignmentSchema.parse(validAssignment)).toEqual(validAssignment);
+  });
+
+  it("rejects a missing resourceId", () => {
+    expect(() => listingResourceAssignmentSchema.parse({ ...validAssignment, resourceId: "" })).toThrow();
+  });
+});
+
+describe("assignListingResourceInputSchema", () => {
+  it("accepts a valid create payload", () => {
+    const input = { resourceId: "01977e6a-0000-7000-8000-000000000000" };
+    expect(assignListingResourceInputSchema.parse(input)).toEqual(input);
+  });
+
+  it("rejects a missing resourceId", () => {
+    expect(() => assignListingResourceInputSchema.parse({})).toThrow();
   });
 });

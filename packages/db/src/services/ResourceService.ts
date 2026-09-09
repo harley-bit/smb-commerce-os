@@ -19,6 +19,29 @@ import type {
   ResourceRepository,
   UpdateResourceInput,
 } from "../repositories/ResourceRepository.js";
+import type {
+  AssignListingResourceInput,
+  ListingResourceAssignment,
+  ListingResourceRepository,
+} from "../repositories/ListingResourceRepository.js";
+import type { ListingRepository } from "../repositories/ListingRepository.js";
+
+/**
+ * `docs/cards/D107.md` security check — "resource assignment respects
+ * tenant scope." Thrown when either side of an assignment doesn't resolve
+ * under the acting tenant's own `ctx` — `ListingRepository.findById`/
+ * `ResourceRepository.findById` both already return `undefined` for a
+ * cross-tenant id (their own tenant-scoping predicate), so this is a
+ * belt-and-suspenders application error surfaced before
+ * `ListingResourceRepository.assign` ever runs, not a second scoping
+ * mechanism.
+ */
+export class CrossTenantResourceAssignmentError extends Error {
+  constructor() {
+    super("Listing and resource must both belong to the acting tenant.");
+    this.name = "CrossTenantResourceAssignmentError";
+  }
+}
 
 /**
  * `docs/design/03` "Service capacity" is a catalog concept — a resource is
@@ -38,6 +61,8 @@ export class ResourceService {
     private readonly resources: ResourceRepository,
     private readonly rules: AvailabilityRuleRepository,
     private readonly exceptions: AvailabilityExceptionRepository,
+    private readonly listingResources: ListingResourceRepository,
+    private readonly listings: ListingRepository,
   ) {}
 
   createResource(
@@ -131,5 +156,41 @@ export class ResourceService {
 
   listAvailabilityExceptions(ctx: TenantContext, resourceId: string): AvailabilityException[] {
     return this.exceptions.listByResource(ctx, resourceId);
+  }
+
+  /**
+   * `docs/cards/D107.md` deliverable — "SERVICE listings: ... resources."
+   * Security check: "resource assignment respects tenant scope." Both
+   * `listingId` and `resourceId` are re-resolved through their own
+   * tenant-scoped `findById` under the *acting* `ctx` before the join row is
+   * ever written — a caller cannot link a listing it doesn't own to a
+   * resource it doesn't own (or vice versa) by supplying ids from another
+   * merchant, even if `ListingResourceRepository.assign` itself would
+   * otherwise happily record the row under the acting tenant's own
+   * `merchantId`. This is why the check lives here and not only in the
+   * repository: the repository's `merchantId` guarantee alone can't tell
+   * whether the *referenced* listing/resource ids belong to that tenant.
+   */
+  assignListingResource(
+    ctx: TenantContext,
+    actingRole: MerchantUserRole,
+    input: AssignListingResourceInput,
+  ): string {
+    assertCanManageCatalog(actingRole);
+    const listing = this.listings.findById(ctx, input.listingId);
+    const resource = this.resources.findById(ctx, input.resourceId);
+    if (!listing || !resource) {
+      throw new CrossTenantResourceAssignmentError();
+    }
+    return this.listingResources.assign(ctx, input);
+  }
+
+  removeListingResource(ctx: TenantContext, actingRole: MerchantUserRole, id: string): void {
+    assertCanManageCatalog(actingRole);
+    this.listingResources.remove(ctx, id);
+  }
+
+  listListingResources(ctx: TenantContext, listingId: string): ListingResourceAssignment[] {
+    return this.listingResources.listByListing(ctx, listingId);
   }
 }

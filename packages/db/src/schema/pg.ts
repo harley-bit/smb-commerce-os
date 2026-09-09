@@ -294,6 +294,35 @@ export const resources = pgTable("resources", {
 });
 
 /**
+ * `docs/design/03` "Service capacity" — `listing_resources`: which resources
+ * can fulfil a service. PostgreSQL twin of `schema/sqlite.ts`'s table of the
+ * same name (`D107`).
+ */
+export const listingResources = pgTable(
+  "listing_resources",
+  {
+    id: uuid("id").primaryKey(),
+    merchantId: uuid("merchant_id")
+      .notNull()
+      .references(() => merchants.id),
+    listingId: uuid("listing_id")
+      .notNull()
+      .references(() => listings.id),
+    resourceId: uuid("resource_id")
+      .notNull()
+      .references(() => resources.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("listing_resources_merchant_listing_resource_unique").on(
+      table.merchantId,
+      table.listingId,
+      table.resourceId,
+    ),
+  ],
+);
+
+/**
  * `docs/design/03` "Service capacity". Recurring weekly availability for a
  * resource — deliberately weekday + time window, not a full RRULE.
  * `weekday` is 0 (Sunday) through 6 (Saturday). `validFrom`/`validTo` bound

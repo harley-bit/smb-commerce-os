@@ -119,3 +119,22 @@ export const updateAvailabilityExceptionInputSchema = z
 export type UpdateAvailabilityExceptionInput = z.infer<
   typeof updateAvailabilityExceptionInputSchema
 >;
+
+/**
+ * `docs/design/03` "Service capacity" — `listing_resources`: which resources
+ * can fulfil a service (`D107`). Mirrors
+ * `packages/db/src/repositories/ListingResourceRepository.ts`.
+ */
+export const listingResourceAssignmentSchema = z.object({
+  id: z.string().min(1),
+  merchantId: z.string().min(1),
+  listingId: z.string().min(1),
+  resourceId: z.string().min(1),
+  createdAt: z.string().min(1),
+});
+export type ListingResourceAssignment = z.infer<typeof listingResourceAssignmentSchema>;
+
+export const assignListingResourceInputSchema = z.object({
+  resourceId: z.string().min(1),
+});
+export type AssignListingResourceInput = z.infer<typeof assignListingResourceInputSchema>;

@@ -161,6 +161,11 @@ export {
   type UpdateResourceInput,
 } from "./repositories/ResourceRepository.js";
 export {
+  ListingResourceRepository,
+  type ListingResourceAssignment,
+  type AssignListingResourceInput,
+} from "./repositories/ListingResourceRepository.js";
+export {
   AvailabilityRuleRepository,
   type AvailabilityRule,
   type CreateAvailabilityRuleInput,
@@ -173,7 +178,7 @@ export {
   type CreateAvailabilityExceptionInput,
   type UpdateAvailabilityExceptionInput,
 } from "./repositories/AvailabilityExceptionRepository.js";
-export { ResourceService } from "./services/ResourceService.js";
+export { ResourceService, CrossTenantResourceAssignmentError } from "./services/ResourceService.js";
 export { AvailabilityCache } from "./cache/AvailabilityCache.js";
 export {
   AvailabilityService,
