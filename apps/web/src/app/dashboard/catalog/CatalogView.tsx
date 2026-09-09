@@ -83,7 +83,8 @@ export function CatalogView({ merchantId }: CatalogViewProps) {
       <a href={`/dashboard/catalog/new-service?merchantId=${merchantId}`}>New service</a>{" "}
       <a href={`/dashboard/catalog/new-rental?merchantId=${merchantId}`}>New rental</a>{" "}
       <a href={`/dashboard/catalog/resources?merchantId=${merchantId}`}>Resources and availability</a>{" "}
-      <a href={`/dashboard/calendar?merchantId=${merchantId}`}>Calendar</a>
+      <a href={`/dashboard/calendar?merchantId=${merchantId}`}>Calendar</a>{" "}
+      <a href={`/dashboard/orders?merchantId=${merchantId}`}>Orders</a>
       <div>
         <label htmlFor="catalog-mode-filter">Mode</label>
         <select

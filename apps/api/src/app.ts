@@ -9,6 +9,7 @@ import { problemType, sendProblem } from "./problemDetails.js";
 import { registerAvailabilityRoutes } from "./routes/availability.js";
 import { registerBookingRoutes } from "./routes/bookings.js";
 import { registerCalendarRoutes } from "./routes/calendar.js";
+import { registerOrderRoutes } from "./routes/orders.js";
 import { registerConnectRoutes } from "./routes/connect.js";
 import { registerListingRoutes } from "./routes/listings.js";
 import { registerResourceRoutes } from "./routes/resources.js";
@@ -182,6 +183,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   });
   registerBookingRoutes(app, connection, availabilityCache);
   registerCalendarRoutes(app, connection);
+  registerOrderRoutes(app, connection);
   registerWebhookRoutes(app, options.stripeWebhookSecret ?? "whsec_dev_placeholder", connection);
   registerConnectRoutes(app, connection, options.connectAccountProvider ?? new SimulatedConnectAccountProvider(), {
     webBaseUrl: options.webBaseUrl ?? "http://localhost:3000",

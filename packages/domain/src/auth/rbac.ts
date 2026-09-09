@@ -21,6 +21,7 @@ export type MerchantAction =
   | "inventory:manage"
   | "bookings:view"
   | "bookings:manage"
+  | "orders:view"
   | "condition_reports:manage"
   | "reports:view"
   | "payments:refund"
@@ -49,6 +50,7 @@ const READ_ONLY_ACTIONS: readonly MerchantAction[] = [
   "catalog:view",
   "inventory:view",
   "bookings:view",
+  "orders:view",
   "reports:view",
 ];
 
@@ -57,6 +59,7 @@ const STAFF_ACTIONS: readonly MerchantAction[] = [
   "inventory:view",
   "bookings:view",
   "bookings:manage",
+  "orders:view",
   "condition_reports:manage",
 ];
 
@@ -67,6 +70,7 @@ const ADMIN_ACTIONS: readonly MerchantAction[] = [
   "inventory:manage",
   "bookings:view",
   "bookings:manage",
+  "orders:view",
   "condition_reports:manage",
   "reports:view",
   "payments:refund",

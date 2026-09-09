@@ -9,6 +9,7 @@ const ALL_ACTIONS: MerchantAction[] = [
   "inventory:manage",
   "bookings:view",
   "bookings:manage",
+  "orders:view",
   "condition_reports:manage",
   "reports:view",
   "payments:refund",
@@ -50,6 +51,7 @@ describe("rbac role matrix", () => {
       "inventory:view",
       "bookings:view",
       "bookings:manage",
+      "orders:view",
       "condition_reports:manage",
     ];
     const forbidden: MerchantAction[] = [
@@ -69,7 +71,13 @@ describe("rbac role matrix", () => {
   });
 
   it("READ_ONLY can view but never manage or mutate anything", () => {
-    const permitted: MerchantAction[] = ["catalog:view", "inventory:view", "bookings:view", "reports:view"];
+    const permitted: MerchantAction[] = [
+      "catalog:view",
+      "inventory:view",
+      "bookings:view",
+      "orders:view",
+      "reports:view",
+    ];
     const forbidden: MerchantAction[] = [
       "catalog:manage",
       "inventory:manage",

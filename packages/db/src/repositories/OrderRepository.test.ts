@@ -1,4 +1,5 @@
 import { createTenantContext, generateUuidV7 } from "@smb-os/domain";
+import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 import { createConnection, type Connection } from "../connection.js";
 import { runSqliteMigrations } from "../migrate.js";
@@ -189,5 +190,29 @@ describe("OrderRepository", () => {
     expect(repo.findLineById(ctxA, lineA)).toMatchObject({ id: lineA, orderId: orderA });
     expect(repo.findLineById(ctxB, lineA)).toBeUndefined();
     expect(repo.findLineById(ctxA, "does-not-exist")).toBeUndefined();
+  });
+
+  it("listByMerchant() returns only the caller's orders, most recently placed first", () => {
+    const ctxA = createTenantContext(merchantA);
+    const ctxB = createTenantContext(merchantB);
+
+    const orderA1 = repo.create(ctxA, { customerUserId: userA, status: "CART", currency: "USD" });
+    const orderA2 = repo.create(ctxA, { customerUserId: userA, status: "CONFIRMED", currency: "USD" });
+    repo.create(ctxB, { customerUserId: userB, status: "CART", currency: "USD" });
+
+    connection.db
+      .update(sqliteSchema.orders)
+      .set({ placedAt: "2026-01-01T00:00:00.000Z" })
+      .where(eq(sqliteSchema.orders.id, orderA1))
+      .run();
+    connection.db
+      .update(sqliteSchema.orders)
+      .set({ placedAt: "2026-02-01T00:00:00.000Z" })
+      .where(eq(sqliteSchema.orders.id, orderA2))
+      .run();
+
+    const results = repo.listByMerchant(ctxA);
+
+    expect(results.map((order) => order.id)).toEqual([orderA2, orderA1]);
   });
 });

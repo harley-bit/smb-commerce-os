@@ -1,5 +1,5 @@
 import { generateUuidV7 } from "@smb-os/domain";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import type { Connection } from "../connection.js";
 import { orders, orderLines } from "../schema/sqlite.js";
 import { TenantScopedRepository, type RepositoryMethod } from "../tenancy/TenantScopedRepository.js";
@@ -104,6 +104,16 @@ export class OrderRepository extends TenantScopedRepository<typeof orders.mercha
       .from(orders)
       .where(and(this.scope(ctx), eq(orders.id, id)))
       .get() as Order | undefined;
+  };
+
+  /** `docs/cards/D115.md` — Order list. Most recently placed first. */
+  listByMerchant: RepositoryMethod<[], Order[]> = (ctx) => {
+    return this.conn.db
+      .select()
+      .from(orders)
+      .where(this.scope(ctx))
+      .orderBy(desc(orders.placedAt))
+      .all() as Order[];
   };
 
   addLine: RepositoryMethod<[orderId: string, input: AddOrderLineInput], string> = (ctx, orderId, input) => {
