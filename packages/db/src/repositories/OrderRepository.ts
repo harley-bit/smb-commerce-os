@@ -168,6 +168,15 @@ export class OrderRepository extends TenantScopedRepository<typeof orders.mercha
       .run();
   };
 
+  /** `docs/cards/D133.md` — the only writer of `status: "CANCELLED"`/`cancelledAt`; called once per order, after every line's refund/deposit/reservation side effect has already been applied. */
+  cancel: RepositoryMethod<[orderId: string, cancelledAt: string], void> = (ctx, orderId, cancelledAt) => {
+    this.conn.db
+      .update(orders)
+      .set({ status: "CANCELLED", cancelledAt })
+      .where(and(this.scope(ctx), eq(orders.id, orderId)))
+      .run();
+  };
+
   updateContactDetails: RepositoryMethod<[orderId: string, details: ContactDetails], void> = (
     ctx,
     orderId,

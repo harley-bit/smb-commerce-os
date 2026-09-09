@@ -271,4 +271,27 @@ describe("OrderRepository", () => {
       contactPhone: "+15551234567",
     });
   });
+
+  it("cancel() cannot modify another merchant's order", () => {
+    const ctxA = createTenantContext(merchantA);
+    const ctxB = createTenantContext(merchantB);
+
+    const orderA = repo.create(ctxA, { customerUserId: userA, status: "CONFIRMED", currency: "USD" });
+
+    repo.cancel(ctxB, orderA, "2026-09-09T00:00:00.000Z");
+
+    expect(repo.findById(ctxA, orderA)).toMatchObject({ status: "CONFIRMED", cancelledAt: null });
+  });
+
+  it("cancel() marks the order CANCELLED with cancelledAt for the owning merchant", () => {
+    const ctxA = createTenantContext(merchantA);
+
+    const orderA = repo.create(ctxA, { customerUserId: userA, status: "CONFIRMED", currency: "USD" });
+    repo.cancel(ctxA, orderA, "2026-09-09T00:00:00.000Z");
+
+    expect(repo.findById(ctxA, orderA)).toMatchObject({
+      status: "CANCELLED",
+      cancelledAt: "2026-09-09T00:00:00.000Z",
+    });
+  });
 });

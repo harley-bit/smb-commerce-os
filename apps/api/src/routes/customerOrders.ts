@@ -1,10 +1,22 @@
 import type { FastifyInstance } from "fastify";
-import { createTenantContext, type AuthProvider } from "@smb-os/domain";
 import {
+  createTenantContext,
+  type AuthProvider,
+  type CancellationPolicySet,
+  type DepositHoldProvider,
+  type RefundProvider,
+} from "@smb-os/domain";
+import {
+  CustomerCancellationService,
   CustomerOrderHistoryService,
+  DepositAuthorizationRepository,
+  DepositAuthorizationService,
   ListingRepository,
   MerchantRepository,
+  OrderAlreadyFinalizedError,
   OrderRepository,
+  PaymentRepository,
+  ReservationRepository,
   runSqliteMigrations,
   type Connection,
 } from "@smb-os/db";
@@ -15,16 +27,38 @@ const SESSION_COOKIE = "session";
 interface CustomerOrderServices {
   merchants: MerchantRepository;
   history: CustomerOrderHistoryService;
+  cancellation: CustomerCancellationService;
 }
 
 /** Lazily migrates `connection` on first use — same pattern as `./orderConfirmation.ts`. */
-function createServiceFactory(connection: Connection): () => Promise<CustomerOrderServices> {
+function createServiceFactory(
+  connection: Connection,
+  refundProvider: RefundProvider,
+  depositHoldProvider: DepositHoldProvider,
+  cancellationPolicySet: CancellationPolicySet,
+): () => Promise<CustomerOrderServices> {
   let ready: Promise<CustomerOrderServices> | null = null;
   return () => {
-    ready ??= runSqliteMigrations(connection).then(() => ({
-      merchants: new MerchantRepository(connection),
-      history: new CustomerOrderHistoryService(new OrderRepository(connection), new ListingRepository(connection)),
-    }));
+    ready ??= runSqliteMigrations(connection).then(() => {
+      const orderRepo = new OrderRepository(connection);
+      const paymentRepo = new PaymentRepository(connection);
+      const reservationRepo = new ReservationRepository(connection);
+      const depositRepo = new DepositAuthorizationRepository(connection);
+      const depositService = new DepositAuthorizationService(orderRepo, paymentRepo, depositRepo, depositHoldProvider);
+      return {
+        merchants: new MerchantRepository(connection),
+        history: new CustomerOrderHistoryService(orderRepo, new ListingRepository(connection)),
+        cancellation: new CustomerCancellationService(
+          orderRepo,
+          paymentRepo,
+          reservationRepo,
+          depositRepo,
+          depositService,
+          refundProvider,
+          cancellationPolicySet,
+        ),
+      };
+    });
     return ready;
   };
 }
@@ -53,8 +87,15 @@ function createServiceFactory(connection: Connection): () => Promise<CustomerOrd
  * existing — so this route always answers `404`, never `403`, for both
  * cases.
  */
-export function registerCustomerOrderRoutes(app: FastifyInstance, connection: Connection, authProvider: AuthProvider): void {
-  const getServices = createServiceFactory(connection);
+export function registerCustomerOrderRoutes(
+  app: FastifyInstance,
+  connection: Connection,
+  authProvider: AuthProvider,
+  refundProvider: RefundProvider,
+  depositHoldProvider: DepositHoldProvider,
+  cancellationPolicySet: CancellationPolicySet,
+): void {
+  const getServices = createServiceFactory(connection, refundProvider, depositHoldProvider, cancellationPolicySet);
 
   app.get<{ Params: { slug: string } }>("/v1/m/:slug/account/orders", async (request, reply) => {
     const token = request.cookies[SESSION_COOKIE];
@@ -109,6 +150,68 @@ export function registerCustomerOrderRoutes(app: FastifyInstance, connection: Co
         return sendProblem(request, reply, 404, problemType("not-found"), "Not Found", "No order with that id.");
       }
       return reply.code(200).send(detail);
+    },
+  );
+
+  /**
+   * `docs/cards/D133.md` — "Cancellation flow". Same session-check shape as
+   * the two routes above; the security check ("cancellation authority
+   * verified against ownership") is enforced identically to D132's IDOR
+   * defense: `CustomerCancellationService.cancelOrder` returns `undefined`
+   * whenever the order belongs to a different customer, and this route maps
+   * that to a flat 404 — the same response a nonexistent order id gets —
+   * never a distinguishable 403.
+   */
+  app.post<{ Params: { slug: string; orderId: string } }>(
+    "/v1/m/:slug/account/orders/:orderId/cancel",
+    async (request, reply) => {
+      const token = request.cookies[SESSION_COOKIE];
+      const identity = token ? await authProvider.verifySession(token) : null;
+      if (!identity) {
+        return sendProblem(
+          request,
+          reply,
+          401,
+          problemType("unauthorized"),
+          "Unauthorized",
+          "A valid session is required.",
+        );
+      }
+
+      const { merchants, cancellation } = await getServices();
+      const merchant = merchants.findBySlug(request.params.slug);
+      if (!merchant) {
+        return sendProblem(request, reply, 404, problemType("not-found"), "Not Found", "No merchant with that slug.");
+      }
+
+      const idempotencyKey = request.headers["idempotency-key"];
+      if (typeof idempotencyKey !== "string" || idempotencyKey.length === 0) {
+        return sendProblem(
+          request,
+          reply,
+          400,
+          problemType("bad-request"),
+          "Bad Request",
+          "Idempotency-Key header is required.",
+        );
+      }
+
+      const ctx = createTenantContext(merchant.id);
+      try {
+        const result = await cancellation.cancelOrder(ctx, identity.userId, request.params.orderId, {
+          cancelledAt: new Date().toISOString(),
+          idempotencyKey,
+        });
+        if (!result) {
+          return sendProblem(request, reply, 404, problemType("not-found"), "Not Found", "No order with that id.");
+        }
+        return reply.code(200).send(result);
+      } catch (error) {
+        if (error instanceof OrderAlreadyFinalizedError) {
+          return sendProblem(request, reply, 409, problemType("conflict"), "Conflict", error.message);
+        }
+        throw error;
+      }
     },
   );
 }

@@ -5,6 +5,7 @@ import {
   ListingRepository,
   MerchantRepository,
   OrderRepository,
+  PaymentRepository,
   UserRepository,
   VariantRepository,
   createConnection,
@@ -106,6 +107,20 @@ function merchantIdForSlug(connection: Connection, slug: string): string {
   return merchants.findBySlug(slug)!.id;
 }
 
+function chargeOrder(connection: Connection, merchantId: string, orderId: string): void {
+  const ctx = createTenantContext(merchantId);
+  new PaymentRepository(connection).create(ctx, {
+    orderId,
+    provider: "stripe",
+    providerRef: "pi_original_charge",
+    kind: "CHARGE",
+    amountMinor: 1200,
+    currency: "USD",
+    status: "SUCCEEDED",
+    createdAt: CREATED_AT,
+  });
+}
+
 describe("GET /v1/m/:slug/account/orders and .../account/orders/:orderId", () => {
   it("this card's acceptance criteria: only the authenticated customer's orders are returned", async () => {
     const fx = await setupFixture();
@@ -192,5 +207,106 @@ describe("GET /v1/m/:slug/account/orders and .../account/orders/:orderId", () =>
     });
 
     expect(res.statusCode).toBe(404);
+  });
+});
+
+describe("POST /v1/m/:slug/account/orders/:orderId/cancel", () => {
+  it("this card's acceptance criteria: cancels the order and issues the correct refund", async () => {
+    const fx = await setupFixture();
+    const merchantId = merchantIdForSlug(fx.connection, fx.slug);
+    const orderId = seedProductOnlyOrder(fx.connection, merchantId, fx.customerUserId);
+    chargeOrder(fx.connection, merchantId, orderId);
+
+    const res = await fx.app.inject({
+      method: "POST",
+      url: `/v1/m/${fx.slug}/account/orders/${orderId}/cancel`,
+      headers: { cookie: "session=customer-token", "idempotency-key": "cancel-1" },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { orderId: string; lines: Array<{ refundPercent: number; refundAmountMinor: number }> };
+    expect(body.orderId).toBe(orderId);
+    expect(body.lines[0]).toMatchObject({ refundPercent: 100, refundAmountMinor: 1200 });
+
+    const ctx = createTenantContext(merchantId);
+    expect(new OrderRepository(fx.connection).findById(ctx, orderId)).toMatchObject({ status: "CANCELLED" });
+  });
+
+  it("this card's security check — cancellation authority verified against ownership: another customer's order returns 404, not 403, and is left untouched", async () => {
+    const fx = await setupFixture();
+    const merchantId = merchantIdForSlug(fx.connection, fx.slug);
+    const orderId = seedProductOnlyOrder(fx.connection, merchantId, fx.otherCustomerUserId);
+    chargeOrder(fx.connection, merchantId, orderId);
+
+    const res = await fx.app.inject({
+      method: "POST",
+      url: `/v1/m/${fx.slug}/account/orders/${orderId}/cancel`,
+      headers: { cookie: "session=customer-token", "idempotency-key": "cancel-2" },
+    });
+
+    expect(res.statusCode).toBe(404);
+    const ctx = createTenantContext(merchantId);
+    expect(new OrderRepository(fx.connection).findById(ctx, orderId)).toMatchObject({ status: "CONFIRMED" });
+  });
+
+  it("404s for an order id that does not exist at all — same status as the ownership-mismatch case", async () => {
+    const fx = await setupFixture();
+
+    const res = await fx.app.inject({
+      method: "POST",
+      url: `/v1/m/${fx.slug}/account/orders/${generateUuidV7()}/cancel`,
+      headers: { cookie: "session=customer-token", "idempotency-key": "cancel-3" },
+    });
+
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("rejects an unauthenticated cancellation request", async () => {
+    const fx = await setupFixture();
+    const merchantId = merchantIdForSlug(fx.connection, fx.slug);
+    const orderId = seedProductOnlyOrder(fx.connection, merchantId, fx.customerUserId);
+
+    const res = await fx.app.inject({
+      method: "POST",
+      url: `/v1/m/${fx.slug}/account/orders/${orderId}/cancel`,
+      headers: { "idempotency-key": "cancel-4" },
+    });
+
+    expect(res.statusCode).toBe(401);
+  });
+
+  it("requires an Idempotency-Key header", async () => {
+    const fx = await setupFixture();
+    const merchantId = merchantIdForSlug(fx.connection, fx.slug);
+    const orderId = seedProductOnlyOrder(fx.connection, merchantId, fx.customerUserId);
+
+    const res = await fx.app.inject({
+      method: "POST",
+      url: `/v1/m/${fx.slug}/account/orders/${orderId}/cancel`,
+      headers: { cookie: "session=customer-token" },
+    });
+
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("returns 409 when cancelling an already-cancelled order", async () => {
+    const fx = await setupFixture();
+    const merchantId = merchantIdForSlug(fx.connection, fx.slug);
+    const orderId = seedProductOnlyOrder(fx.connection, merchantId, fx.customerUserId);
+    chargeOrder(fx.connection, merchantId, orderId);
+
+    await fx.app.inject({
+      method: "POST",
+      url: `/v1/m/${fx.slug}/account/orders/${orderId}/cancel`,
+      headers: { cookie: "session=customer-token", "idempotency-key": "cancel-5" },
+    });
+
+    const res = await fx.app.inject({
+      method: "POST",
+      url: `/v1/m/${fx.slug}/account/orders/${orderId}/cancel`,
+      headers: { cookie: "session=customer-token", "idempotency-key": "cancel-6" },
+    });
+
+    expect(res.statusCode).toBe(409);
   });
 });

@@ -9,16 +9,20 @@ import {
   SimulatedConnectAccountProvider,
   SimulatedDepositHoldProvider,
   SimulatedPaymentIntentProvider,
+  SimulatedRefundProvider,
   createConnection as createDbConnection,
   type Connection,
   type ReceiptEmailNotifier,
   type RoleChangeNotifier,
 } from "@smb-os/db";
-import type {
-  ConnectAccountProvider,
-  DepositHoldProvider,
-  MediaUploadProvider,
-  PaymentIntentProvider,
+import {
+  defineCancellationPolicySet,
+  type CancellationPolicySet,
+  type ConnectAccountProvider,
+  type DepositHoldProvider,
+  type MediaUploadProvider,
+  type PaymentIntentProvider,
+  type RefundProvider,
 } from "@smb-os/domain";
 import { problemType, sendProblem } from "./problemDetails.js";
 import { registerAvailabilityRoutes } from "./routes/availability.js";
@@ -154,9 +158,48 @@ export interface BuildAppOptions {
    * codebase (D069, D076, D094, D120); see `./routes/orderConfirmation.ts`.
    */
   onReceiptEmail?: ReceiptEmailNotifier;
+  /**
+   * `docs/cards/D133.md` — the `RefundProvider` behind
+   * `./routes/customerOrders.ts`'s cancellation route. Same "native/simulated
+   * now, real provider later" precedent as every other payments seam in
+   * this codebase (D096) — no Stripe platform account is provisioned yet.
+   */
+  refundProvider?: RefundProvider;
+  /**
+   * `docs/cards/D133.md` — the per-mode `CancellationPolicySet` cancellation
+   * pricing is computed against. No repository persists a merchant's own
+   * configured policy yet (flagged as an open gap since D084/D096), so this
+   * defaults to a placeholder set until that storage exists.
+   */
+  cancellationPolicySet?: CancellationPolicySet;
 }
 
 const REQUEST_ID_HEADER = "x-request-id";
+
+/**
+ * `docs/cards/D133.md` — no merchant-configurable cancellation policy
+ * storage exists yet (flagged since D084/D096), so this is a placeholder
+ * default, not a business decision: full refund up to 24h before start for
+ * services/rentals, no refund after, and a full refund for products
+ * (returns are handled by fulfillment, not this flow).
+ */
+const DEFAULT_CANCELLATION_POLICY_SET: CancellationPolicySet = defineCancellationPolicySet({
+  product: { mode: "PRODUCT", tiers: [{ minHoursBeforeStart: 0, refundPercent: 100 }] },
+  service: {
+    mode: "SERVICE",
+    tiers: [
+      { minHoursBeforeStart: 24, refundPercent: 100 },
+      { minHoursBeforeStart: 0, refundPercent: 0 },
+    ],
+  },
+  rental: {
+    mode: "RENTAL",
+    tiers: [
+      { minHoursBeforeStart: 24, refundPercent: 100 },
+      { minHoursBeforeStart: 0, refundPercent: 0 },
+    ],
+  },
+});
 
 /**
  * Fields that must never reach a log line, per this card's security
@@ -261,7 +304,15 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   registerOrderConfirmationRoutes(app, connection, options.onReceiptEmail ?? (() => undefined), {
     rateLimit: options.publicCheckoutRateLimit,
   });
-  registerCustomerOrderRoutes(app, connection, authProvider);
+  const depositHoldProvider = options.depositHoldProvider ?? new SimulatedDepositHoldProvider();
+  registerCustomerOrderRoutes(
+    app,
+    connection,
+    authProvider,
+    options.refundProvider ?? new SimulatedRefundProvider(),
+    depositHoldProvider,
+    options.cancellationPolicySet ?? DEFAULT_CANCELLATION_POLICY_SET,
+  );
   registerBookingRoutes(app, connection, availabilityCache);
   registerCalendarRoutes(app, connection);
   registerOrderRoutes(app, connection);
@@ -273,7 +324,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
         secret: options.conditionMediaUploadSecret ?? "condition_media_dev_placeholder",
       }),
   });
-  registerDamageClaimRoutes(app, connection, options.depositHoldProvider ?? new SimulatedDepositHoldProvider());
+  registerDamageClaimRoutes(app, connection, depositHoldProvider);
   registerWebhookRoutes(app, options.stripeWebhookSecret ?? "whsec_dev_placeholder", connection);
   registerConnectRoutes(app, connection, options.connectAccountProvider ?? new SimulatedConnectAccountProvider(), {
     webBaseUrl: options.webBaseUrl ?? "http://localhost:3000",

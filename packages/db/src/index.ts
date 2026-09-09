@@ -377,3 +377,10 @@ export {
   type CustomerOrderDetail,
   type CustomerOrderHistory,
 } from "./services/CustomerOrderHistoryService.js";
+export {
+  CustomerCancellationService,
+  OrderAlreadyFinalizedError,
+  type CancelOrderInput,
+  type CancelledOrderLineResult,
+  type CancelOrderResult,
+} from "./services/CustomerCancellationService.js";
