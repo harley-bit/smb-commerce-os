@@ -65,7 +65,12 @@
 
 ## Current card
 
-**Now current: `D139` (Phase 8 — Mobile Application, Mobile foundation — Navigation and design parity). No gate. `D138` closed Done this session — see below.**
+**Now current: `D140` (Phase 8 — Mobile Application, Mobile customer flows — Merchant discovery and page). No gate. `D139` closed Done this session — see below.**
+
+**D139 background (Navigation and design parity) — Done:**
+Built a zero-native-dependency navigation stack (`push`/`goBack`/`reset`) whose six screens are typed 1:1 against the web storefront's `/m/[slug]` route tree, plus RN `Button`/`TextField` components mirroring `apps/web/src/components`'s prop surface — `SignInScreen` now actually uses them. `App.tsx` wires `SignIn` → `Home` through the reducer, with `PlaceholderScreen` standing in for the screens D140–D147 will implement. Full gate green; both platforms confirmed bundling clean via `expo export`. Full detail in `docs/logs/D139.md`. **Pointer advances to `D140`.**
+
+**Note on this run's own process:** the automated loop's D139 session correctly closed out the code, log (`Outcome: Done`), and calendar row, but left this file's own "Current card" heading unchanged at `D139` instead of updating it to `D140` — a real gap in that run's last step, not a card-content problem. The loop's own driver (`run_build_loop.py`) correctly detected the pointer hadn't advanced and stopped rather than silently continuing on stale state; caught and fixed in this immediate follow-up (no code change needed — D139's own acceptance criteria and gate were genuinely met).
 
 **D138 background (Mobile authentication) — Done:**
 Built OAuth 2.0 Authorization Code + PKCE (RFC 7636) as new first-party `/auth/mobile/*` endpoints on top of the existing native password/MFA auth (no OIDC IdP exists anywhere in this repo — confirmed by investigation, not assumed). Mobile access/refresh tokens stored via `expo-secure-store` (Keychain/Android Keystore), never `AsyncStorage` — statically enforced by a new guard test. Both platforms confirmed bundling clean via `expo export`. Full detail in `docs/logs/D138.md` and the "Last updated" note above. **Pointer advances to `D139`.**
