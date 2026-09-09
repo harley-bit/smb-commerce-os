@@ -90,6 +90,15 @@ describe("OrderDetailView (D115 — Order list and detail)", () => {
     expect(screen.getByText("Kayak")).toBeInTheDocument();
   });
 
+  it("links a RENTAL line to the damage-claim view (D118)", async () => {
+    mockFetchOnce(true, ORDER_DETAIL);
+    render(<OrderDetailView merchantId={MERCHANT_ID} orderId={ORDER_ID} />);
+
+    await screen.findByText("Kayak");
+    const link = screen.getByRole("link", { name: "Damage claim" });
+    expect(link).toHaveAttribute("href", `/dashboard/rentals/line-3/damage-claims?merchantId=${MERCHANT_ID}`);
+  });
+
   it("shows a not-found message on a 404", async () => {
     mockFetchOnce(false, {}, 404);
     render(<OrderDetailView merchantId={MERCHANT_ID} orderId={ORDER_ID} />);

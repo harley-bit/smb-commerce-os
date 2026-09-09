@@ -49,6 +49,17 @@ export class DamageClaimService {
     });
   }
 
+  /** `docs/cards/D118.md` — the review step: every claim filed against a rental order line, read-only, open to every merchant role including `READ_ONLY`. */
+  listByOrderLine(ctx: TenantContext, actingRole: MerchantUserRole, orderLineId: string): DamageClaim[] {
+    assertCan({ role: actingRole }, "bookings:view");
+    return this.damageClaims.listByOrderLine(ctx, orderLineId);
+  }
+
+  findById(ctx: TenantContext, actingRole: MerchantUserRole, claimId: string): DamageClaim | undefined {
+    assertCan({ role: actingRole }, "bookings:view");
+    return this.damageClaims.findById(ctx, claimId);
+  }
+
   notifyCustomer(ctx: TenantContext, actingRole: MerchantUserRole, claimId: string): void {
     assertCan({ role: actingRole }, "bookings:manage");
 

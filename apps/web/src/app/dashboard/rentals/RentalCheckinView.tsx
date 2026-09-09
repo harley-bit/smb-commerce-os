@@ -129,7 +129,6 @@ export function RentalCheckinView({ merchantId, orderLineId }: RentalCheckinView
 
   useEffect(() => {
     void loadComparison();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orderLineId]);
 
   const checkinReport = comparison?.checkinReport ?? null;

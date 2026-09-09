@@ -132,6 +132,8 @@ export function OrderDetailView({ merchantId, orderId }: OrderDetailViewProps) {
                     <Link href={`/dashboard/rentals/${line.id}/checkout?merchantId=${merchantId}`}>Check out</Link>
                     {" · "}
                     <Link href={`/dashboard/rentals/${line.id}/checkin?merchantId=${merchantId}`}>Check in</Link>
+                    {" · "}
+                    <Link href={`/dashboard/rentals/${line.id}/damage-claims?merchantId=${merchantId}`}>Damage claim</Link>
                   </>
                 )}
               </td>

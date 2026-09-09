@@ -77,6 +77,15 @@ export class DepositAuthorizationRepository extends TenantScopedRepository<typeo
       .get() as DepositAuthorization | undefined;
   };
 
+  /** `docs/cards/D118.md` — the damage-claim capture UI looks up a rental order line's own deposit hold to bound a capture against, without the caller needing to already know the hold's own id. */
+  findByOrderLineId: RepositoryMethod<[orderLineId: string], DepositAuthorization | undefined> = (ctx, orderLineId) => {
+    return this.conn.db
+      .select()
+      .from(depositAuthorizations)
+      .where(and(this.scope(ctx), eq(depositAuthorizations.orderLineId, orderLineId)))
+      .get() as DepositAuthorization | undefined;
+  };
+
   private transition: RepositoryMethod<
     [id: string, event: DepositEvent, extra?: Partial<Pick<DepositAuthorization, "capturedMinor" | "releasedAt">>],
     DepositState

@@ -160,6 +160,33 @@ describe("DamageClaimService", () => {
     expect(claim?.resolvedAt).toBe("2026-09-12T09:00:00.000Z");
   });
 
+  it("listByOrderLine() returns every claim filed against that order line", () => {
+    const service = new DamageClaimService(claims);
+    const ctx = createTenantContext(merchantA);
+    const claimId = service.fileClaim(ctx, "STAFF", {
+      orderLineId: orderLineA,
+      amountMinor: 5000,
+      filedAt: "2026-09-10T09:00:00.000Z",
+    });
+
+    const found = service.listByOrderLine(ctx, "READ_ONLY", orderLineA);
+
+    expect(found).toHaveLength(1);
+    expect(found[0]?.id).toBe(claimId);
+  });
+
+  it("findById() returns the claim, gated on bookings:view", () => {
+    const service = new DamageClaimService(claims);
+    const ctx = createTenantContext(merchantA);
+    const claimId = service.fileClaim(ctx, "STAFF", {
+      orderLineId: orderLineA,
+      amountMinor: 5000,
+      filedAt: "2026-09-10T09:00:00.000Z",
+    });
+
+    expect(service.findById(ctx, "READ_ONLY", claimId)?.id).toBe(claimId);
+  });
+
   it("rejects resolving a claim that already reached a terminal state", () => {
     const service = new DamageClaimService(claims);
     const ctx = createTenantContext(merchantA);

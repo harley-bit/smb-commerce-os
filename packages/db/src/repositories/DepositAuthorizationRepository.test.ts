@@ -191,6 +191,28 @@ describe("DepositAuthorizationRepository", () => {
     expect(deposits.findById(ctx, id)).toMatchObject({ state: "EXPIRED" });
   });
 
+  it("finds the deposit authorization for an order line", () => {
+    const ctx = createTenantContext(merchantA);
+    const id = createAuthorized(20000);
+
+    expect(deposits.findByOrderLineId(ctx, orderLineA)).toMatchObject({ id, orderLineId: orderLineA });
+  });
+
+  it("returns undefined when an order line has no deposit authorization", () => {
+    const ctx = createTenantContext(merchantA);
+
+    expect(deposits.findByOrderLineId(ctx, "no-such-order-line")).toBeUndefined();
+  });
+
+  it("does not let merchant B find merchant A's deposit authorization by order line", () => {
+    const ctxA = createTenantContext(merchantA);
+    const ctxB = createTenantContext(merchantB);
+    createAuthorized(20000);
+
+    expect(deposits.findByOrderLineId(ctxB, orderLineA)).toBeUndefined();
+    expect(deposits.findByOrderLineId(ctxA, orderLineA)).toBeDefined();
+  });
+
   it("does not let merchant B create, read, capture, release, or expire merchant A's deposit authorization", () => {
     const ctxA = createTenantContext(merchantA);
     const ctxB = createTenantContext(merchantB);

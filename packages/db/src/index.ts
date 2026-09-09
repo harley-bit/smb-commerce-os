@@ -298,7 +298,19 @@ export {
   OrderLineHasNoDepositError,
   type PlaceDepositHoldInput,
   type PlaceDepositHoldResult,
+  type CaptureDepositHoldInput,
+  type CaptureDepositHoldResult,
 } from "./services/DepositAuthorizationService.js";
+export {
+  DamageClaimRepository,
+  type DamageClaim,
+  type CreateDamageClaimInput,
+} from "./repositories/DamageClaimRepository.js";
+export {
+  DamageClaimService,
+  type FileDamageClaimInput,
+  type DamageClaimCustomerNotifier,
+} from "./services/DamageClaimService.js";
 export {
   verifyStripeWebhookSignature,
   type WebhookVerificationOptions,

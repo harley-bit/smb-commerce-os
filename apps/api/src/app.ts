@@ -7,16 +7,18 @@ import {
   AvailabilityCache,
   HmacMediaUploadProvider,
   SimulatedConnectAccountProvider,
+  SimulatedDepositHoldProvider,
   createConnection as createDbConnection,
   type Connection,
 } from "@smb-os/db";
-import type { ConnectAccountProvider, MediaUploadProvider } from "@smb-os/domain";
+import type { ConnectAccountProvider, DepositHoldProvider, MediaUploadProvider } from "@smb-os/domain";
 import { problemType, sendProblem } from "./problemDetails.js";
 import { registerAvailabilityRoutes } from "./routes/availability.js";
 import { registerBookingRoutes } from "./routes/bookings.js";
 import { registerCalendarRoutes } from "./routes/calendar.js";
 import { registerOrderRoutes } from "./routes/orders.js";
 import { registerFulfillmentRoutes } from "./routes/fulfillment.js";
+import { registerDamageClaimRoutes } from "./routes/damageClaims.js";
 import { registerConnectRoutes } from "./routes/connect.js";
 import { registerListingRoutes } from "./routes/listings.js";
 import { registerResourceRoutes } from "./routes/resources.js";
@@ -106,6 +108,13 @@ export interface BuildAppOptions {
   conditionMediaUploadSecret?: string;
   /** Injectable for tests that want to observe or fake the signed-upload provider directly. */
   mediaUploadProvider?: MediaUploadProvider;
+  /**
+   * `docs/cards/D118.md` — the deposit-hold provider behind
+   * `./routes/damageClaims.ts`'s capture route. Same "native/simulated
+   * now, real provider later" precedent as every other payments seam in
+   * this codebase (D094) — no Stripe platform account is provisioned yet.
+   */
+  depositHoldProvider?: DepositHoldProvider;
 }
 
 const REQUEST_ID_HEADER = "x-request-id";
@@ -209,6 +218,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
         secret: options.conditionMediaUploadSecret ?? "condition_media_dev_placeholder",
       }),
   });
+  registerDamageClaimRoutes(app, connection, options.depositHoldProvider ?? new SimulatedDepositHoldProvider());
   registerWebhookRoutes(app, options.stripeWebhookSecret ?? "whsec_dev_placeholder", connection);
   registerConnectRoutes(app, connection, options.connectAccountProvider ?? new SimulatedConnectAccountProvider(), {
     webBaseUrl: options.webBaseUrl ?? "http://localhost:3000",
