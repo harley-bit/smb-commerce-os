@@ -11,13 +11,14 @@ export interface PlaceholderScreenProps {
 
 /**
  * `docs/cards/D139.md` — a stand-in body for every core screen except
- * `SignIn`. D140+ replace each of these with the real data-fetching screen
- * (`docs/cards/D140.md` onward); this card's job is only the navigation
- * shell they'll be dropped into, plus proof that a screen can push another
+ * `SignIn` and (since `docs/cards/D140.md`) `Home`, which `App.tsx` now
+ * routes to the real `../merchant/HomeScreen.tsx` instead. D141+ replace
+ * the rest with their own real data-fetching screens; this remains their
+ * navigation shell until then, plus proof that a screen can push another
  * screen and come back. Shows the web path this screen mirrors, so
  * navigation parity is visible, not just asserted in `routes.test.ts`.
  */
-export function PlaceholderScreen({ screen, canGoBack, onGoBack, onNavigate }: PlaceholderScreenProps) {
+export function PlaceholderScreen({ screen, canGoBack, onGoBack }: PlaceholderScreenProps) {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>{screen.name}</Text>
@@ -26,20 +27,6 @@ export function PlaceholderScreen({ screen, canGoBack, onGoBack, onNavigate }: P
         <Button variant="secondary" onPress={onGoBack}>
           Back
         </Button>
-      ) : null}
-      {screen.name === "Home" ? (
-        <>
-          <Button
-            onPress={() =>
-              onNavigate({ name: "ListingDetail", params: { slug: screen.params.slug, listingSlug: "example" } })
-            }
-          >
-            View a listing
-          </Button>
-          <Button variant="secondary" onPress={() => onNavigate({ name: "AccountOrders", params: screen.params })}>
-            My orders
-          </Button>
-        </>
       ) : null}
     </View>
   );

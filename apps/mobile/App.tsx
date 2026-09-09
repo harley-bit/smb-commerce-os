@@ -3,6 +3,7 @@ import { StatusBar } from "expo-status-bar";
 import { StyleSheet, View } from "react-native";
 import { parseMerchantProfile } from "./src/shell/parseMerchantProfile";
 import { SignInScreen } from "./src/auth/SignInScreen";
+import { HomeScreen } from "./src/merchant/HomeScreen";
 import { PlaceholderScreen } from "./src/navigation/PlaceholderScreen";
 import { initialNavigationState, navigationReducer } from "./src/navigation/navigationState";
 
@@ -32,6 +33,22 @@ export default function App() {
     return (
       <View style={styles.container}>
         <SignInScreen onSignedIn={() => dispatch({ type: "reset", screen: { name: "Home", params: { slug: homeSlug } } })} />
+        <StatusBar style="auto" />
+      </View>
+    );
+  }
+
+  if (state.current.name === "Home") {
+    const { slug } = state.current.params;
+    return (
+      <View style={styles.container}>
+        <HomeScreen
+          slug={slug}
+          onSelectListing={(listing) =>
+            dispatch({ type: "push", screen: { name: "ListingDetail", params: { slug, listingSlug: listing.slug } } })
+          }
+          onViewOrders={() => dispatch({ type: "push", screen: { name: "AccountOrders", params: { slug } } })}
+        />
         <StatusBar style="auto" />
       </View>
     );
