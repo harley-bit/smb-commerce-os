@@ -16,7 +16,8 @@
     "@smb-os/contracts": "workspace:*",
     "next": "^15.5.25",
     "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react-dom": "^19.2.8",
+    "zod": "^4.1.13"
   },
   "devDependencies": {
     "@smb-os/eslint-config": "workspace:*",

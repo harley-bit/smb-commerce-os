@@ -10,6 +10,7 @@ import { registerAvailabilityRoutes } from "./routes/availability.js";
 import { registerBookingRoutes } from "./routes/bookings.js";
 import { registerConnectRoutes } from "./routes/connect.js";
 import { registerListingRoutes } from "./routes/listings.js";
+import { registerVariantRoutes } from "./routes/variants.js";
 import { registerMerchantRoutes } from "./routes/merchants.js";
 import { registerWebhookRoutes } from "./routes/webhooks.js";
 import {
@@ -167,6 +168,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   const connection = options.connection ?? createDbConnection(":memory:");
   const availabilityCache = options.availabilityCache ?? new AvailabilityCache();
   registerListingRoutes(app, connection);
+  registerVariantRoutes(app, connection);
   registerMerchantRoutes(app, connection, authProvider);
   registerAvailabilityRoutes(app, connection, availabilityCache, {
     rateLimit: options.availabilityRateLimit,
