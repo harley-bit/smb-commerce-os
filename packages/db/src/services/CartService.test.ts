@@ -19,6 +19,7 @@ describe("CartService", () => {
   let variantB: string;
   let serviceVariant: string;
   let eurVariant: string;
+  let rentalVariant: string;
 
   beforeEach(async () => {
     connection = createConnection(":memory:");
@@ -111,6 +112,24 @@ describe("CartService", () => {
       name: "EUR Variant",
       priceMinor: 1000,
       currency: "EUR",
+    });
+
+    const rentalListing = listingRepo.create(ctx, {
+      mode: "RENTAL",
+      name: "A Rental Listing",
+      slug: "a-rental-listing",
+      status: "PUBLISHED",
+      createdAt: "2026-09-08T00:00:00.000Z",
+    });
+    rentalVariant = variantRepo.create(ctx, {
+      listingId: rentalListing,
+      mode: "RENTAL",
+      sku: "R-SKU",
+      name: "A Rental Variant",
+      priceMinor: 5000,
+      currency: "USD",
+      ratePeriod: "DAY",
+      depositMinor: 20000,
     });
   });
 
@@ -217,5 +236,105 @@ describe("CartService", () => {
     expect(() =>
       service.addProductLine(ctx, { cartId: "does-not-exist", variantId: variantA, quantity: 1 }),
     ).toThrow(/not found/);
+  });
+
+  it("adds a service line using the server-side variant price, quantity fixed at 1", () => {
+    const ctx = createTenantContext(merchantA);
+    const cartId = service.createCart(ctx, { customerUserId: userId, currency: "USD" });
+
+    const result = service.addServiceLine(ctx, {
+      cartId,
+      variantId: serviceVariant,
+      startsAt: "2026-10-01T10:00:00.000Z",
+      endsAt: "2026-10-01T11:00:00.000Z",
+    });
+
+    expect(result.unitPriceMinor).toBe(9000);
+    expect(result.lineTotalMinor).toBe(9000);
+    expect(result.currency).toBe("USD");
+  });
+
+  it("rejects a non-SERVICE variant for addServiceLine", () => {
+    const ctx = createTenantContext(merchantA);
+    const cartId = service.createCart(ctx, { customerUserId: userId, currency: "USD" });
+
+    expect(() =>
+      service.addServiceLine(ctx, {
+        cartId,
+        variantId: variantA,
+        startsAt: "2026-10-01T10:00:00.000Z",
+        endsAt: "2026-10-01T11:00:00.000Z",
+      }),
+    ).toThrow(/SERVICE/);
+  });
+
+  it("adds a rental line carrying the server-side deposit amount, ignoring any client-supplied deposit", () => {
+    const ctx = createTenantContext(merchantA);
+    const cartId = service.createCart(ctx, { customerUserId: userId, currency: "USD" });
+
+    const tamperedInput = {
+      cartId,
+      variantId: rentalVariant,
+      startsAt: "2026-10-05T00:00:00.000Z",
+      endsAt: "2026-10-07T00:00:00.000Z",
+      // A malicious/buggy client payload attempting to override the deposit.
+      depositMinor: 1,
+    };
+
+    const result = service.addRentalLine(ctx, tamperedInput as never);
+
+    expect(result.unitPriceMinor).toBe(5000);
+    expect(result.lineTotalMinor).toBe(5000);
+    expect(result.currency).toBe("USD");
+
+    const lines = orderRepo.listLines(ctx, cartId);
+    expect(lines[0]).toMatchObject({
+      mode: "RENTAL",
+      depositMinor: 20000,
+      startsAt: "2026-10-05T00:00:00.000Z",
+      endsAt: "2026-10-07T00:00:00.000Z",
+    });
+  });
+
+  it("rejects a non-RENTAL variant for addRentalLine", () => {
+    const ctx = createTenantContext(merchantA);
+    const cartId = service.createCart(ctx, { customerUserId: userId, currency: "USD" });
+
+    expect(() =>
+      service.addRentalLine(ctx, {
+        cartId,
+        variantId: variantA,
+        startsAt: "2026-10-05T00:00:00.000Z",
+        endsAt: "2026-10-07T00:00:00.000Z",
+      }),
+    ).toThrow(/RENTAL/);
+  });
+
+  it("holds product, service, and rental lines together and totals them correctly, recomputed server-side", () => {
+    const ctx = createTenantContext(merchantA);
+    const cartId = service.createCart(ctx, { customerUserId: userId, currency: "USD" });
+
+    service.addProductLine(ctx, { cartId, variantId: variantA, quantity: 2 }); // 5000
+    service.addServiceLine(ctx, {
+      cartId,
+      variantId: serviceVariant,
+      startsAt: "2026-10-01T10:00:00.000Z",
+      endsAt: "2026-10-01T11:00:00.000Z",
+    }); // 9000
+    service.addRentalLine(ctx, {
+      cartId,
+      variantId: rentalVariant,
+      startsAt: "2026-10-05T00:00:00.000Z",
+      endsAt: "2026-10-07T00:00:00.000Z",
+    }); // 5000
+
+    const lines = orderRepo.listLines(ctx, cartId);
+    expect(lines.map((l) => l.mode).sort()).toEqual(["PRODUCT", "RENTAL", "SERVICE"]);
+
+    expect(orderRepo.findById(ctx, cartId)).toMatchObject({
+      subtotalMinor: 19000,
+      taxMinor: 0,
+      totalMinor: 19000,
+    });
   });
 });
