@@ -71,3 +71,19 @@ export const publicProductDetailSchema = publicListingSchema.extend({
   variants: z.array(publicVariantSchema),
 });
 export type PublicProductDetail = z.infer<typeof publicProductDetailSchema>;
+
+/**
+ * `docs/cards/D123.md`'s deliverable — a service listing plus the
+ * `resource_id`s (`packages/db/src/repositories/ListingResourceRepository.ts`'s
+ * `listing_resources` join) it can be booked against. `resourceId` is
+ * already public today (`GET /v1/m/{slug}/availability?resourceId=...`,
+ * `apps/api/src/routes/availability.ts`), so surfacing it here adds no new
+ * exposure — it's what the storefront slot picker needs to call that
+ * endpoint. This schema carries no reservation/booking data of its own;
+ * that endpoint's `free: Interval[]` response is this card's security
+ * check answered — bare free/busy intervals, never who booked.
+ */
+export const publicServiceDetailSchema = publicListingSchema.extend({
+  resourceIds: z.array(z.string().min(1)),
+});
+export type PublicServiceDetail = z.infer<typeof publicServiceDetailSchema>;

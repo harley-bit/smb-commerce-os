@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   InventoryMovementRepository,
   ListingRepository,
+  ListingResourceRepository,
   ListingService,
   LocationRepository,
   MerchantRepository,
+  ResourceRepository,
   UserRepository,
   VariantRepository,
   VariantService,
@@ -123,6 +125,13 @@ async function setupProductDetailFixture(): Promise<ProductDetailFixture> {
     status: "PUBLISHED",
     createdAt: CREATED_AT,
   });
+  listings.create(ctx, "OWNER", {
+    mode: "RENTAL",
+    name: "Camping Tent",
+    slug: "camping-tent",
+    status: "PUBLISHED",
+    createdAt: CREATED_AT,
+  });
 
   const variants = new VariantService(new VariantRepository(connection));
   const inStockVariantId = variants.create(ctx, "OWNER", {
@@ -219,11 +228,11 @@ describe("GET /v1/m/:slug/listings/:listingSlug", () => {
     expect(res.statusCode).toBe(404);
   });
 
-  it("returns 404 for a non-PRODUCT listing — this card's scope is product detail only", async () => {
+  it("returns 404 for a RENTAL listing — D123 covers SERVICE, D124 covers RENTAL", async () => {
     const fx = await setupProductDetailFixture();
     const app = buildApp({ connection: fx.connection });
 
-    const res = await app.inject({ method: "GET", url: `/v1/m/${fx.slug}/listings/haircut` });
+    const res = await app.inject({ method: "GET", url: `/v1/m/${fx.slug}/listings/camping-tent` });
 
     expect(res.statusCode).toBe(404);
   });
@@ -237,6 +246,108 @@ describe("GET /v1/m/:slug/listings/:listingSlug", () => {
     const res = await app.inject({ method: "GET", url: `/v1/m/${fx.slug}/listings/wool-sweater` });
 
     expect(res.statusCode).toBe(429);
+  });
+});
+
+interface ServiceDetailFixture {
+  connection: Connection;
+  slug: string;
+  merchantId: string;
+  resourceId: string;
+}
+
+async function setupServiceDetailFixture(): Promise<ServiceDetailFixture> {
+  const connection = createConnection(":memory:");
+  await runSqliteMigrations(connection);
+
+  const merchants = new MerchantRepository(connection);
+  const ctx = createTenantContext(generateUuidV7());
+  const slug = `acme-${generateUuidV7()}`;
+  merchants.create(ctx, {
+    name: "Acme",
+    slug,
+    status: "ACTIVE",
+    defaultCurrency: "USD",
+    createdAt: CREATED_AT,
+  });
+
+  const listings = new ListingService(new ListingRepository(connection));
+  const listingId = listings.create(ctx, "OWNER", {
+    mode: "SERVICE",
+    name: "Haircut",
+    slug: "haircut",
+    status: "PUBLISHED",
+    createdAt: CREATED_AT,
+  });
+  listings.create(ctx, "OWNER", {
+    mode: "SERVICE",
+    name: "Unassigned Massage",
+    slug: "unassigned-massage",
+    status: "PUBLISHED",
+    createdAt: CREATED_AT,
+  });
+  listings.create(ctx, "OWNER", {
+    mode: "SERVICE",
+    name: "Unfinished Consult",
+    slug: "unfinished-consult",
+    status: "DRAFT",
+    createdAt: CREATED_AT,
+  });
+
+  const locations = new LocationRepository(connection);
+  const locationId = locations.create(ctx, { name: "Main", timezone: "America/New_York" });
+
+  const resources = new ResourceRepository(connection);
+  const resourceId = resources.create(ctx, { locationId, kind: "STAFF", name: "Jamie", capacity: 1 });
+
+  const listingResources = new ListingResourceRepository(connection);
+  listingResources.assign(ctx, { listingId, resourceId, createdAt: CREATED_AT });
+
+  return { connection, slug, merchantId: ctx.merchantId, resourceId };
+}
+
+describe("GET /v1/m/:slug/listings/:listingSlug — SERVICE", () => {
+  it("returns the service detail with its resourceIds", async () => {
+    const fx = await setupServiceDetailFixture();
+    const app = buildApp({ connection: fx.connection });
+
+    const res = await app.inject({ method: "GET", url: `/v1/m/${fx.slug}/listings/haircut` });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { name: string; mode: string; resourceIds: string[] };
+    expect(body.name).toBe("Haircut");
+    expect(body.mode).toBe("SERVICE");
+    expect(body.resourceIds).toEqual([fx.resourceId]);
+  });
+
+  it("returns an empty resourceIds array for a service with no resource assigned", async () => {
+    const fx = await setupServiceDetailFixture();
+    const app = buildApp({ connection: fx.connection });
+
+    const res = await app.inject({ method: "GET", url: `/v1/m/${fx.slug}/listings/unassigned-massage` });
+
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as { resourceIds: string[] }).resourceIds).toEqual([]);
+  });
+
+  it("never exposes merchantId, listingId, or the resource's own name — this card's security check", async () => {
+    const fx = await setupServiceDetailFixture();
+    const app = buildApp({ connection: fx.connection });
+
+    const res = await app.inject({ method: "GET", url: `/v1/m/${fx.slug}/listings/haircut` });
+    const body = res.json() as Record<string, unknown>;
+
+    expect(body).not.toHaveProperty("merchantId");
+    expect(JSON.stringify(body)).not.toContain("Jamie");
+  });
+
+  it("returns 404 for a DRAFT service listing's slug", async () => {
+    const fx = await setupServiceDetailFixture();
+    const app = buildApp({ connection: fx.connection });
+
+    const res = await app.inject({ method: "GET", url: `/v1/m/${fx.slug}/listings/unfinished-consult` });
+
+    expect(res.statusCode).toBe(404);
   });
 });
 

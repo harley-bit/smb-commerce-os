@@ -3,6 +3,7 @@ import { createTenantContext } from "@smb-os/domain";
 import {
   InventoryMovementRepository,
   ListingRepository,
+  ListingResourceRepository,
   ListingService,
   MerchantRepository,
   VariantRepository,
@@ -13,7 +14,13 @@ import {
   type ListingMode,
   type Variant,
 } from "@smb-os/db";
-import type { PublicListing, PublicMerchantProfile, PublicProductDetail, PublicVariant } from "@smb-os/contracts";
+import type {
+  PublicListing,
+  PublicMerchantProfile,
+  PublicProductDetail,
+  PublicServiceDetail,
+  PublicVariant,
+} from "@smb-os/contracts";
 import { SlidingWindowRateLimiter } from "../auth/rateLimiter.js";
 import { problemType, sendProblem } from "../problemDetails.js";
 
@@ -24,6 +31,7 @@ interface PublicStorefrontServices {
   listings: ListingService;
   variants: VariantService;
   movements: InventoryMovementRepository;
+  listingResources: ListingResourceRepository;
 }
 
 /**
@@ -39,6 +47,7 @@ function createServiceFactory(connection: Connection): () => Promise<PublicStore
       listings: new ListingService(new ListingRepository(connection)),
       variants: new VariantService(new VariantRepository(connection)),
       movements: new InventoryMovementRepository(connection),
+      listingResources: new ListingResourceRepository(connection),
     }));
     return ready;
   };
@@ -148,9 +157,9 @@ export function registerPublicStorefrontRoutes(
   );
 
   /**
-   * `docs/cards/D122.md`'s product detail page — this route is
-   * deliberately PRODUCT-only (the card's scope); a SERVICE/RENTAL
-   * listing's slug 404s here exactly like an unknown one, no different
+   * `docs/cards/D122.md`'s product detail page, extended by `docs/cards/D123.md`
+   * to also serve SERVICE listings — a RENTAL listing's slug still 404s here
+   * exactly like an unknown one (D124's scope, not yet built), no different
    * response shape that would confirm it exists under a mode this route
    * doesn't yet serve. Same unauthenticated + rate-limited + `PUBLISHED`-
    * only posture as the two routes above.
@@ -162,7 +171,7 @@ export function registerPublicStorefrontRoutes(
         return sendProblem(request, reply, 429, problemType("rate-limited"), "Too Many Requests", "Too many requests. Try again later.");
       }
 
-      const { merchants, listings, variants, movements } = await getServices();
+      const { merchants, listings, variants, movements, listingResources } = await getServices();
       const merchant = merchants.findBySlug(request.params.slug);
       if (!merchant) {
         return sendProblem(request, reply, 404, problemType("not-found"), "Not Found", "No merchant with that slug.");
@@ -170,8 +179,24 @@ export function registerPublicStorefrontRoutes(
 
       const ctx = createTenantContext(merchant.id);
       const listing = listings.findPublishedBySlug(ctx, request.params.listingSlug);
-      if (!listing || listing.mode !== "PRODUCT") {
+      if (!listing || (listing.mode !== "PRODUCT" && listing.mode !== "SERVICE")) {
         return sendProblem(request, reply, 404, problemType("not-found"), "Not Found", "No listing with that slug.");
+      }
+
+      if (listing.mode === "SERVICE") {
+        /**
+         * D123's security check: "Availability shows free/busy only, never
+         * who booked" — answered one layer down, by `GET
+         * /v1/m/{slug}/availability` (`./availability.ts`), which this
+         * detail only points at via bare `resourceId`s. This response
+         * carries no reservation, staff name, or availability data of its
+         * own — a `resourceId` alone identifies nothing about who's booked.
+         */
+        const detail: PublicServiceDetail = {
+          ...toPublicListing(listing),
+          resourceIds: listingResources.listByListing(ctx, listing.id).map((assignment) => assignment.resourceId),
+        };
+        return reply.code(200).send(detail);
       }
 
       const detail: PublicProductDetail = {

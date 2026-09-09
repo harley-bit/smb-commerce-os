@@ -95,18 +95,25 @@ describe("MerchantPageView", () => {
     expect(link).toHaveAttribute("href", `/m/${SLUG}/l/wool-sweater`);
   });
 
-  it("does not link a service or rental listing — no detail page exists for those yet", async () => {
+  it("links a service listing to its detail page, per D123", async () => {
     mockStorefront({
-      listings: [
-        { id: "l-2", mode: "SERVICE", name: "Haircut", slug: "haircut", description: null },
-        { id: "l-3", mode: "RENTAL", name: "Camping Tent", slug: "camping-tent", description: null },
-      ],
+      listings: [{ id: "l-2", mode: "SERVICE", name: "Haircut", slug: "haircut", description: null }],
     });
 
     render(<MerchantPageView slug={SLUG} />);
 
-    await screen.findByText("Haircut");
-    expect(screen.queryByRole("link", { name: "Haircut" })).not.toBeInTheDocument();
+    const link = await screen.findByRole("link", { name: "Haircut" });
+    expect(link).toHaveAttribute("href", `/m/${SLUG}/l/haircut`);
+  });
+
+  it("does not link a rental listing — no detail page exists for it yet", async () => {
+    mockStorefront({
+      listings: [{ id: "l-3", mode: "RENTAL", name: "Camping Tent", slug: "camping-tent", description: null }],
+    });
+
+    render(<MerchantPageView slug={SLUG} />);
+
+    await screen.findByText("Camping Tent");
     expect(screen.queryByRole("link", { name: "Camping Tent" })).not.toBeInTheDocument();
   });
 });

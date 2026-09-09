@@ -3,6 +3,7 @@ import {
   publicListingSchema,
   publicMerchantProfileSchema,
   publicProductDetailSchema,
+  publicServiceDetailSchema,
   publicVariantSchema,
 } from "./publicStorefront.js";
 
@@ -155,6 +156,46 @@ describe("publicProductDetailSchema", () => {
         slug: "wool-sweater",
         description: null,
         variants: [],
+      }),
+    ).toThrow();
+  });
+});
+
+describe("publicServiceDetailSchema", () => {
+  it("accepts a well-formed service detail with its resourceIds", () => {
+    const detail = {
+      id: "01977e6a-0000-7000-8000-000000000003",
+      mode: "SERVICE" as const,
+      name: "Haircut",
+      slug: "haircut",
+      description: null,
+      resourceIds: ["01977e6a-0000-7000-8000-000000000004"],
+    };
+    expect(publicServiceDetailSchema.parse(detail)).toEqual(detail);
+  });
+
+  it("accepts an empty resourceIds array for a service with no resource assigned yet", () => {
+    const detail = {
+      id: "01977e6a-0000-7000-8000-000000000003",
+      mode: "SERVICE" as const,
+      name: "Haircut",
+      slug: "haircut",
+      description: null,
+      resourceIds: [] as string[],
+    };
+    expect(publicServiceDetailSchema.parse(detail)).toEqual(detail);
+  });
+
+  it("rejects a payload carrying an internal merchantId", () => {
+    expect(() =>
+      publicServiceDetailSchema.strict().parse({
+        id: "01977e6a-0000-7000-8000-000000000003",
+        merchantId: "01977e6a-0000-7000-8000-000000000001",
+        mode: "SERVICE",
+        name: "Haircut",
+        slug: "haircut",
+        description: null,
+        resourceIds: [],
       }),
     ).toThrow();
   });
