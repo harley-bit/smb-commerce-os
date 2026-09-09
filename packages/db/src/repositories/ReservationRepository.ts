@@ -341,6 +341,27 @@ export class ReservationRepository extends TenantScopedRepository<typeof reserva
       .all() as Reservation[];
   };
 
+  /**
+   * `docs/cards/D114.md` — the unified calendar's read path: every
+   * reservation of any `subjectType` (service `RESOURCE` bookings and
+   * rental `INVENTORY_UNIT` reservations alike) whose interval overlaps
+   * `[rangeStart, rangeEnd)`, tenant-scoped like every other query in this
+   * repository. Deliberately not filtered by state — `CalendarService`
+   * decides what a caller should see; this method's job is just "what
+   * exists in this window for this merchant."
+   */
+  listInRange: RepositoryMethod<[rangeStart: string, rangeEnd: string], Reservation[]> = (
+    ctx,
+    rangeStart,
+    rangeEnd,
+  ) => {
+    return this.conn.db
+      .select()
+      .from(reservations)
+      .where(and(this.scope(ctx), lt(reservations.startsAt, rangeEnd), gt(reservations.endsAt, rangeStart)))
+      .all() as Reservation[];
+  };
+
   private insertRow(ctx: TenantContext, input: CreateReservationInput): string {
     const id = generateUuidV7();
     this.conn.db

@@ -1317,4 +1317,58 @@ describe("ReservationRepository", () => {
       expect(repo.findByOrderLineId(ctxB, orderLineId)).toBeUndefined();
     });
   });
+
+  describe("listInRange()", () => {
+    it("returns reservations overlapping the requested range, across subject types", () => {
+      const ctx = createTenantContext(merchantA);
+      const inRange = repo.createGuarded(ctx, {
+        subjectType: "RESOURCE",
+        subjectId: resourceA,
+        startsAt: "2026-10-01T09:00:00.000Z",
+        endsAt: "2026-10-01T10:00:00.000Z",
+        quantity: 1,
+        state: "CONFIRMED",
+        createdAt: "2026-09-01T00:00:00.000Z",
+      });
+
+      const results = repo.listInRange(ctx, "2026-10-01T00:00:00.000Z", "2026-10-02T00:00:00.000Z");
+
+      expect(results.map((r) => r.id)).toEqual([inRange]);
+    });
+
+    it("excludes reservations entirely outside the requested range", () => {
+      const ctx = createTenantContext(merchantA);
+      repo.createGuarded(ctx, {
+        subjectType: "RESOURCE",
+        subjectId: resourceA,
+        startsAt: "2026-11-01T09:00:00.000Z",
+        endsAt: "2026-11-01T10:00:00.000Z",
+        quantity: 1,
+        state: "CONFIRMED",
+        createdAt: "2026-09-01T00:00:00.000Z",
+      });
+
+      const results = repo.listInRange(ctx, "2026-10-01T00:00:00.000Z", "2026-10-02T00:00:00.000Z");
+
+      expect(results).toHaveLength(0);
+    });
+
+    it("is tenant-scoped — merchant B's reservations never appear in merchant A's calendar range", () => {
+      const ctxA = createTenantContext(merchantA);
+      const ctxB = createTenantContext(merchantB);
+      repo.createGuarded(ctxB, {
+        subjectType: "RESOURCE",
+        subjectId: resourceB,
+        startsAt: "2026-10-01T09:00:00.000Z",
+        endsAt: "2026-10-01T10:00:00.000Z",
+        quantity: 1,
+        state: "CONFIRMED",
+        createdAt: "2026-09-01T00:00:00.000Z",
+      });
+
+      const results = repo.listInRange(ctxA, "2026-10-01T00:00:00.000Z", "2026-10-02T00:00:00.000Z");
+
+      expect(results).toHaveLength(0);
+    });
+  });
 });

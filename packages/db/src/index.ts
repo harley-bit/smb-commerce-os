@@ -125,6 +125,7 @@ export {
   type CreateReservationInput,
 } from "./repositories/ReservationRepository.js";
 export { PgReservationRepository } from "./repositories/PgReservationRepository.js";
+export { CalendarService, type CalendarEntry } from "./services/CalendarService.js";
 export {
   sweepExpiredHoldsSqlite,
   sweepExpiredHoldsPg,

@@ -79,3 +79,7 @@ body {
   color: var(--color-fg);
   border-color: var(--color-border);
 }
+
+.calendar-row--conflict {
+  background: var(--color-danger-bg);
+}
