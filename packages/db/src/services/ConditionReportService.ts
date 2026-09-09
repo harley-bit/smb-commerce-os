@@ -1,9 +1,20 @@
 import { assertCan, computeConditionGradeDelta, type ConditionGradeDelta, type TenantContext } from "@smb-os/domain";
 import type { MerchantUserRole } from "../repositories/MerchantUserRepository.js";
+import type { OrderRepository } from "../repositories/OrderRepository.js";
 import {
   type ConditionReport,
   type ConditionReportRepository,
 } from "../repositories/ConditionReportRepository.js";
+import { OrderLineNotFoundError } from "./FulfillmentEventService.js";
+
+export interface RecordCheckoutInput {
+  orderLineId: string;
+  inventoryUnitId: string;
+  conditionGrade: string;
+  notes?: string | null;
+  createdBy: string;
+  createdAt: string;
+}
 
 export interface RecordCheckinInput {
   orderLineId: string;
@@ -49,7 +60,49 @@ export class MissingCheckoutBaselineError extends Error {
  * would support a damage claim is the one that would defeat a false one.
  */
 export class ConditionReportService {
-  constructor(private readonly conditionReports: ConditionReportRepository) {}
+  constructor(
+    private readonly conditionReports: ConditionReportRepository,
+    private readonly orderLines: OrderRepository,
+  ) {}
+
+  /**
+   * `docs/cards/D116.md` — the CHECKOUT half of the trail `recordCheckin`
+   * (D075) already had a caller for. Writing this through the service
+   * layer, rather than the repository directly, means `bookings:manage`
+   * and cross-tenant order-line ownership are checked the same way for
+   * every write here, not just for CHECKIN — a caller who names another
+   * merchant's `orderLineId` gets `OrderLineNotFoundError`, not a written
+   * CHECKOUT report scoped to their own tenant but describing someone
+   * else's rental.
+   */
+  recordCheckout(
+    ctx: TenantContext,
+    actingRole: MerchantUserRole,
+    input: RecordCheckoutInput,
+  ): ConditionReport {
+    assertCan({ role: actingRole }, "bookings:manage");
+
+    const line = this.orderLines.findLineById(ctx, input.orderLineId);
+    if (!line) {
+      throw new OrderLineNotFoundError(input.orderLineId);
+    }
+
+    const reportId = this.conditionReports.create(ctx, {
+      orderLineId: input.orderLineId,
+      inventoryUnitId: input.inventoryUnitId,
+      phase: "CHECKOUT",
+      conditionGrade: input.conditionGrade,
+      notes: input.notes ?? null,
+      createdBy: input.createdBy,
+      createdAt: input.createdAt,
+    });
+
+    const report = this.conditionReports.findById(ctx, reportId);
+    if (!report) {
+      throw new Error("Condition report vanished immediately after being written");
+    }
+    return report;
+  }
 
   recordCheckin(
     ctx: TenantContext,

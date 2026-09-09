@@ -71,7 +71,7 @@ describe("Gate G4 — rental lifecycle E2E", () => {
     inventoryUnitService = new InventoryUnitService(unitRepo, auditLogRepo);
     inventoryService = new InventoryService(movementRepo, auditLogRepo);
     rentalReservationService = new RentalReservationService(variantRepo, unitRepo, reservationRepo);
-    conditionReportService = new ConditionReportService(conditionReportRepo);
+    conditionReportService = new ConditionReportService(conditionReportRepo, orderRepo);
     fulfillmentEventService = new FulfillmentEventService(orderRepo, eventRepo, reservationRepo, conditionReportRepo);
     productSaleService = new ProductSaleService(
       variantRepo,
@@ -227,11 +227,10 @@ describe("Gate G4 — rental lifecycle E2E", () => {
     expect(reservationRepo.findById(ctx, reservationId)?.state).toEqual("CONFIRMED");
     expect(eventRepo.listByOrderLine(ctx, orderLineId)).toEqual([]);
 
-    // Baseline recorded, so pickup can now legally proceed.
-    conditionReportRepo.create(ctx, {
+    // Baseline recorded via D116's checkout flow, so pickup can now legally proceed.
+    conditionReportService.recordCheckout(ctx, "STAFF", {
       orderLineId,
       inventoryUnitId: unit1,
-      phase: "CHECKOUT",
       conditionGrade: "GOOD",
       createdBy: staffUserId,
       createdAt: "2026-09-10T08:55:00.000Z",

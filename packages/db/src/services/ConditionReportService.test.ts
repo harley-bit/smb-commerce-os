@@ -9,11 +9,13 @@ import { OrderRepository } from "../repositories/OrderRepository.js";
 import { LocationRepository } from "../repositories/LocationRepository.js";
 import { InventoryUnitRepository } from "../repositories/InventoryUnitRepository.js";
 import { ConditionReportRepository } from "../repositories/ConditionReportRepository.js";
+import { OrderLineNotFoundError } from "./FulfillmentEventService.js";
 import { ConditionReportService, MissingCheckoutBaselineError } from "./ConditionReportService.js";
 
 describe("ConditionReportService", () => {
   let connection: Connection;
   let conditionReports: ConditionReportRepository;
+  let orderRepo: OrderRepository;
   let service: ConditionReportService;
   let merchantA: string;
   let merchantB: string;
@@ -26,11 +28,11 @@ describe("ConditionReportService", () => {
     await runSqliteMigrations(connection);
     const listingRepo = new ListingRepository(connection);
     const variantRepo = new VariantRepository(connection);
-    const orderRepo = new OrderRepository(connection);
+    orderRepo = new OrderRepository(connection);
     const locationRepo = new LocationRepository(connection);
     const unitRepo = new InventoryUnitRepository(connection);
     conditionReports = new ConditionReportRepository(connection);
-    service = new ConditionReportService(conditionReports);
+    service = new ConditionReportService(conditionReports, orderRepo);
 
     merchantA = generateUuidV7();
     merchantB = generateUuidV7();
@@ -93,6 +95,52 @@ describe("ConditionReportService", () => {
       unitPriceMinor: 5000,
       lineTotalMinor: 5000,
     });
+  });
+
+  it("recordCheckout() writes a CHECKOUT report and returns it — docs/cards/D116.md", () => {
+    const ctx = createTenantContext(merchantA);
+
+    const report = service.recordCheckout(ctx, "STAFF", {
+      orderLineId: orderLineA,
+      inventoryUnitId: inventoryUnitA,
+      conditionGrade: "GOOD",
+      notes: "No visible damage at pickup.",
+      createdBy: userA,
+      createdAt: "2026-09-10T08:55:00.000Z",
+    });
+
+    expect(report.phase).toBe("CHECKOUT");
+    expect(report.conditionGrade).toBe("GOOD");
+    expect(conditionReports.hasCheckoutReport(ctx, orderLineA)).toBe(true);
+  });
+
+  it("recordCheckout() rejects when the acting role lacks bookings:manage", () => {
+    const ctx = createTenantContext(merchantA);
+
+    expect(() =>
+      service.recordCheckout(ctx, "READ_ONLY", {
+        orderLineId: orderLineA,
+        inventoryUnitId: inventoryUnitA,
+        conditionGrade: "GOOD",
+        createdBy: userA,
+        createdAt: "2026-09-10T08:55:00.000Z",
+      }),
+    ).toThrow();
+    expect(conditionReports.hasCheckoutReport(ctx, orderLineA)).toBe(false);
+  });
+
+  it("recordCheckout() rejects an order line that doesn't belong to the caller's merchant — tenant isolation (G1)", () => {
+    const ctxB = createTenantContext(merchantB);
+
+    expect(() =>
+      service.recordCheckout(ctxB, "OWNER", {
+        orderLineId: orderLineA,
+        inventoryUnitId: inventoryUnitA,
+        conditionGrade: "GOOD",
+        createdBy: userA,
+        createdAt: "2026-09-10T08:55:00.000Z",
+      }),
+    ).toThrow(OrderLineNotFoundError);
   });
 
   it("recordCheckin() rejects a CHECKIN with no CHECKOUT baseline on record", () => {

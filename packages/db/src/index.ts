@@ -258,6 +258,7 @@ export {
 export {
   ConditionReportService,
   MissingCheckoutBaselineError,
+  type RecordCheckoutInput,
   type RecordCheckinInput,
   type RecordCheckinResult,
 } from "./services/ConditionReportService.js";

@@ -3,13 +3,20 @@ import type { Writable } from "node:stream";
 import cookie from "@fastify/cookie";
 import Fastify, { type FastifyError, type FastifyInstance } from "fastify";
 import type { AuthProvider } from "@smb-os/domain";
-import { AvailabilityCache, SimulatedConnectAccountProvider, createConnection as createDbConnection, type Connection } from "@smb-os/db";
-import type { ConnectAccountProvider } from "@smb-os/domain";
+import {
+  AvailabilityCache,
+  HmacMediaUploadProvider,
+  SimulatedConnectAccountProvider,
+  createConnection as createDbConnection,
+  type Connection,
+} from "@smb-os/db";
+import type { ConnectAccountProvider, MediaUploadProvider } from "@smb-os/domain";
 import { problemType, sendProblem } from "./problemDetails.js";
 import { registerAvailabilityRoutes } from "./routes/availability.js";
 import { registerBookingRoutes } from "./routes/bookings.js";
 import { registerCalendarRoutes } from "./routes/calendar.js";
 import { registerOrderRoutes } from "./routes/orders.js";
+import { registerFulfillmentRoutes } from "./routes/fulfillment.js";
 import { registerConnectRoutes } from "./routes/connect.js";
 import { registerListingRoutes } from "./routes/listings.js";
 import { registerResourceRoutes } from "./routes/resources.js";
@@ -89,6 +96,16 @@ export interface BuildAppOptions {
   connectAccountProvider?: ConnectAccountProvider;
   /** Base URL of the merchant-facing web app; used to build Connect onboarding's hosted-flow refresh/return URLs. */
   webBaseUrl?: string;
+  /**
+   * `docs/cards/D116.md` — the HMAC secret behind `./routes/fulfillment.ts`'s
+   * signed condition-media upload grants (`HmacMediaUploadProvider`, D073).
+   * Same "native now, real provider later" placeholder situation as
+   * `stripeWebhookSecret` above — no real object-storage account is
+   * provisioned yet.
+   */
+  conditionMediaUploadSecret?: string;
+  /** Injectable for tests that want to observe or fake the signed-upload provider directly. */
+  mediaUploadProvider?: MediaUploadProvider;
 }
 
 const REQUEST_ID_HEADER = "x-request-id";
@@ -184,6 +201,14 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   registerBookingRoutes(app, connection, availabilityCache);
   registerCalendarRoutes(app, connection);
   registerOrderRoutes(app, connection);
+  registerFulfillmentRoutes(app, connection, {
+    mediaUploadProvider:
+      options.mediaUploadProvider ??
+      new HmacMediaUploadProvider({
+        baseUrl: options.webBaseUrl ?? "http://localhost:3000",
+        secret: options.conditionMediaUploadSecret ?? "condition_media_dev_placeholder",
+      }),
+  });
   registerWebhookRoutes(app, options.stripeWebhookSecret ?? "whsec_dev_placeholder", connection);
   registerConnectRoutes(app, connection, options.connectAccountProvider ?? new SimulatedConnectAccountProvider(), {
     webBaseUrl: options.webBaseUrl ?? "http://localhost:3000",

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
@@ -112,6 +113,7 @@ export function OrderDetailView({ merchantId, orderId }: OrderDetailViewProps) {
             <th>Line total</th>
             <th>Starts</th>
             <th>Ends</th>
+            <th></th>
           </tr>
         </thead>
         <tbody>
@@ -124,6 +126,11 @@ export function OrderDetailView({ merchantId, orderId }: OrderDetailViewProps) {
               <td>{formatMinor(line.lineTotalMinor, order.currency)}</td>
               <td>{line.startsAt ?? "—"}</td>
               <td>{line.endsAt ?? "—"}</td>
+              <td>
+                {line.mode === "RENTAL" && (
+                  <Link href={`/dashboard/rentals/${line.id}/checkout?merchantId=${merchantId}`}>Check out</Link>
+                )}
+              </td>
             </tr>
           ))}
         </tbody>
