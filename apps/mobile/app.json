@@ -31,6 +31,12 @@
             "useFrameworks": "dynamic"
           }
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Staff use the camera to photograph an item's condition at rental checkout and check-in. Photos are attached to the order's condition report only."
+        }
       ]
     ]
   }
