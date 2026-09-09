@@ -491,4 +491,158 @@ describe("resource endpoints", () => {
       expect(res.statusCode).toBe(401);
     });
   });
+
+  describe("GET/POST /resources/:resourceId/availability-exceptions — blackouts and extra openings (D113 deliverable)", () => {
+    it("OWNER creates a BLACKOUT exception and it appears in the resource's exception list", async () => {
+      const fx = await setupFixture("OWNER");
+      const resourceId = await createResourceDirect(fx.connection, fx.merchantId, fx.locationId);
+
+      const createRes = await fx.app.inject({
+        method: "POST",
+        url: `/resources/${resourceId}/availability-exceptions`,
+        headers: fx.merchantHeader,
+        payload: {
+          startsAt: "2026-12-25T00:00:00.000Z",
+          endsAt: "2026-12-26T00:00:00.000Z",
+          kind: "BLACKOUT",
+          note: "Holiday",
+        },
+      });
+      expect(createRes.statusCode).toBe(201);
+
+      const listRes = await fx.app.inject({
+        method: "GET",
+        url: `/resources/${resourceId}/availability-exceptions`,
+        headers: fx.merchantHeader,
+      });
+      expect(listRes.statusCode).toBe(200);
+      expect(listRes.json()).toEqual([
+        expect.objectContaining({
+          resourceId,
+          kind: "BLACKOUT",
+          startsAt: "2026-12-25T00:00:00.000Z",
+          endsAt: "2026-12-26T00:00:00.000Z",
+          note: "Holiday",
+        }),
+      ]);
+    });
+
+    it("forces resourceId from the URL, ignoring any resourceId smuggled in the body", async () => {
+      const fx = await setupFixture("OWNER");
+      const resourceId = await createResourceDirect(fx.connection, fx.merchantId, fx.locationId);
+      const otherResourceId = await createResourceDirect(fx.connection, fx.merchantId, fx.locationId);
+
+      const createRes = await fx.app.inject({
+        method: "POST",
+        url: `/resources/${resourceId}/availability-exceptions`,
+        headers: fx.merchantHeader,
+        payload: {
+          resourceId: otherResourceId,
+          startsAt: "2026-12-25T00:00:00.000Z",
+          endsAt: "2026-12-26T00:00:00.000Z",
+          kind: "BLACKOUT",
+        },
+      });
+      expect(createRes.statusCode).toBe(201);
+
+      const listRes = await fx.app.inject({
+        method: "GET",
+        url: `/resources/${resourceId}/availability-exceptions`,
+        headers: fx.merchantHeader,
+      });
+      expect(listRes.json()).toEqual([expect.objectContaining({ resourceId })]);
+    });
+
+    it.each<MerchantUserRole>(["STAFF", "READ_ONLY"])("%s is forbidden from creating an exception", async (role) => {
+      const fx = await setupFixture(role);
+      const resourceId = await createResourceDirect(fx.connection, fx.merchantId, fx.locationId);
+      const res = await fx.app.inject({
+        method: "POST",
+        url: `/resources/${resourceId}/availability-exceptions`,
+        headers: fx.merchantHeader,
+        payload: { startsAt: "2026-12-25T00:00:00.000Z", endsAt: "2026-12-26T00:00:00.000Z", kind: "BLACKOUT" },
+      });
+      expect(res.statusCode).toBe(403);
+    });
+
+    it("404s creating an exception against another merchant's resource — merchant-scoped only (this card's security check)", async () => {
+      const fx = await setupFixture("OWNER");
+      const otherLocations = new LocationRepository(fx.connection);
+      const otherLocationId = otherLocations.create(createTenantContext(fx.otherMerchantId), {
+        name: "Other Shop",
+        timezone: "UTC",
+      });
+      const otherResourceId = await createResourceDirect(fx.connection, fx.otherMerchantId, otherLocationId);
+
+      const res = await fx.app.inject({
+        method: "POST",
+        url: `/resources/${otherResourceId}/availability-exceptions`,
+        headers: fx.merchantHeader,
+        payload: { startsAt: "2026-12-25T00:00:00.000Z", endsAt: "2026-12-26T00:00:00.000Z", kind: "BLACKOUT" },
+      });
+      expect(res.statusCode).toBe(404);
+    });
+
+    it("never lists another merchant's exceptions, even for a resource id that exists under this merchant's own connection", async () => {
+      const fx = await setupFixture("OWNER");
+      const otherLocations = new LocationRepository(fx.connection);
+      const otherLocationId = otherLocations.create(createTenantContext(fx.otherMerchantId), {
+        name: "Other Shop",
+        timezone: "UTC",
+      });
+      const otherResourceId = await createResourceDirect(fx.connection, fx.otherMerchantId, otherLocationId);
+
+      const res = await fx.app.inject({
+        method: "GET",
+        url: `/resources/${otherResourceId}/availability-exceptions`,
+        headers: fx.merchantHeader,
+      });
+      expect(res.statusCode).toBe(404);
+    });
+
+    it("a BLACKOUT exception removes the expected window from availability, and an EXTRA exception opens a new one — this card's acceptance criterion", async () => {
+      const fx = await setupFixture("OWNER");
+      const resourceId = await createResourceDirect(fx.connection, fx.merchantId, fx.locationId);
+
+      // Sunday 09:00-17:00 UTC (location timezone is UTC), covering 2027-03-07 (Sunday).
+      await fx.app.inject({
+        method: "POST",
+        url: `/resources/${resourceId}/availability-rules`,
+        headers: fx.merchantHeader,
+        payload: { weekday: 0, startTime: "09:00", endTime: "17:00" },
+      });
+
+      // BLACKOUT the second half of that Sunday's window.
+      const blackoutRes = await fx.app.inject({
+        method: "POST",
+        url: `/resources/${resourceId}/availability-exceptions`,
+        headers: fx.merchantHeader,
+        payload: { startsAt: "2027-03-07T13:00:00.000Z", endsAt: "2027-03-07T17:00:00.000Z", kind: "BLACKOUT" },
+      });
+      expect(blackoutRes.statusCode).toBe(201);
+
+      // EXTRA opening on an otherwise-closed day (Monday 2027-03-08).
+      const extraRes = await fx.app.inject({
+        method: "POST",
+        url: `/resources/${resourceId}/availability-exceptions`,
+        headers: fx.merchantHeader,
+        payload: { startsAt: "2027-03-08T08:00:00.000Z", endsAt: "2027-03-08T09:00:00.000Z", kind: "EXTRA" },
+      });
+      expect(extraRes.statusCode).toBe(201);
+
+      const res = await fx.app.inject({
+        method: "GET",
+        url: `/resources/${resourceId}/availability?from=2027-03-07T00:00:00.000Z&to=2027-03-09T00:00:00.000Z`,
+        headers: fx.merchantHeader,
+      });
+      expect(res.statusCode).toBe(200);
+      const free = (res.json() as { free: { start: string; end: string }[] }).free;
+
+      // Blackout trimmed the base window down to 09:00-13:00.
+      expect(free).toContainEqual({ start: "2027-03-07T09:00:00.000Z", end: "2027-03-07T13:00:00.000Z" });
+      expect(free).not.toContainEqual(expect.objectContaining({ start: "2027-03-07T13:00:00.000Z" }));
+      // Extra opening appears even though Monday has no base rule.
+      expect(free).toContainEqual({ start: "2027-03-08T08:00:00.000Z", end: "2027-03-08T09:00:00.000Z" });
+    });
+  });
 });

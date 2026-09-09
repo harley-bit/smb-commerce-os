@@ -19,6 +19,7 @@ import {
 } from "@smb-os/db";
 import {
   assignListingResourceInputSchema,
+  createAvailabilityExceptionInputSchema,
   createAvailabilityRuleInputSchema,
   createResourceInputSchema,
 } from "@smb-os/contracts";
@@ -217,6 +218,55 @@ export function registerResourceRoutes(
         return sendProblem(request, reply, 400, problemType("bad-request"), "Bad Request", parsed.error.message);
       }
       const id = resourceService.createAvailabilityRule(request.auth!.tenant, request.auth!.role, parsed.data);
+      return reply.code(201).send({ id });
+    },
+  );
+
+  /**
+   * `docs/cards/D113.md` deliverable — "Blackouts and extra openings."
+   * `ResourceService.createAvailabilityException`/`listAvailabilityExceptions`
+   * (D058) already existed with no HTTP surface, same gap D112 closed for
+   * weekly rules. Same "path is the source of truth" posture: `resourceId`
+   * is always taken from the URL, never trusted from the body. Security
+   * check — "Merchant-scoped only": the resource is re-resolved under the
+   * acting tenant's own `ctx` before either verb touches an exception row,
+   * so a caller cannot list or create exceptions against a resource id that
+   * belongs to another merchant, even if that id genuinely exists.
+   */
+  app.get<{ Params: { resourceId: string } }>(
+    "/resources/:resourceId/availability-exceptions",
+    { preHandler: app.authenticate },
+    async (request, reply) => {
+      if (!requireAction(request, reply, "catalog:view")) {
+        return reply;
+      }
+      const { resourceService } = await getServices();
+      const resource = resourceService.findResourceById(request.auth!.tenant, request.params.resourceId);
+      if (!resource) {
+        return sendProblem(request, reply, 404, problemType("not-found"), "Not Found", "No resource with that id.");
+      }
+      return reply.code(200).send(resourceService.listAvailabilityExceptions(request.auth!.tenant, resource.id));
+    },
+  );
+
+  app.post<{ Params: { resourceId: string }; Body: unknown }>(
+    "/resources/:resourceId/availability-exceptions",
+    { preHandler: app.authenticate },
+    async (request, reply) => {
+      if (!requireAction(request, reply, "catalog:manage")) {
+        return reply;
+      }
+      const { resourceService } = await getServices();
+      const resource = resourceService.findResourceById(request.auth!.tenant, request.params.resourceId);
+      if (!resource) {
+        return sendProblem(request, reply, 404, problemType("not-found"), "Not Found", "No resource with that id.");
+      }
+      const body = typeof request.body === "object" && request.body !== null ? request.body : {};
+      const parsed = createAvailabilityExceptionInputSchema.safeParse({ ...body, resourceId: resource.id });
+      if (!parsed.success) {
+        return sendProblem(request, reply, 400, problemType("bad-request"), "Bad Request", parsed.error.message);
+      }
+      const id = resourceService.createAvailabilityException(request.auth!.tenant, request.auth!.role, parsed.data);
       return reply.code(201).send({ id });
     },
   );

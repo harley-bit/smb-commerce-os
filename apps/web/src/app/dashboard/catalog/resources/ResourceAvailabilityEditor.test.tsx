@@ -63,9 +63,11 @@ describe("ResourceAvailabilityEditor (D112 — Resources and availability editor
       { ok: true, body: [LOCATION] }, // GET /locations
       { ok: true, body: [RESOURCE] }, // GET /resources
       { ok: true, body: [] }, // GET /resources/:id/availability-rules (initial)
+      { ok: true, body: [] }, // GET /resources/:id/availability-exceptions (initial)
       { ok: true, body: { free: [] } }, // GET /resources/:id/availability (initial)
       { ok: true, body: { id: RULE_ID } }, // POST /resources/:id/availability-rules
       { ok: true, body: [RULE] }, // GET /resources/:id/availability-rules (refetch)
+      { ok: true, body: [] }, // GET /resources/:id/availability-exceptions (refetch)
       {
         ok: true,
         body: { free: [{ start: "2027-03-07T14:00:00.000Z", end: "2027-03-07T22:00:00.000Z" }] },
@@ -92,7 +94,7 @@ describe("ResourceAvailabilityEditor (D112 — Resources and availability editor
     await screen.findByText(/9:00 AM.*5:00 PM/);
 
     expect(fetchMock).toHaveBeenNthCalledWith(
-      5,
+      6,
       expect.stringContaining(`/resources/${RESOURCE_ID}/availability-rules`),
       expect.objectContaining({
         method: "POST",
@@ -107,16 +109,69 @@ describe("ResourceAvailabilityEditor (D112 — Resources and availability editor
       { ok: true, body: [LOCATION] },
       { ok: true, body: [RESOURCE] },
       { ok: true, body: [] },
+      { ok: true, body: [] },
       { ok: true, body: { free: [] } },
     );
     const user = userEvent.setup();
     render(<ResourceAvailabilityEditor merchantId={MERCHANT_ID} />);
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(5));
 
     await user.click(screen.getByRole("button", { name: "Add weekly rule" }));
 
     await screen.findByRole("alert");
-    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+  });
+
+  it("adds a BLACKOUT exception and it appears in the exceptions list — D113 acceptance criterion", async () => {
+    const EXCEPTION_ID = "018f1e2a-0000-7000-8000-000000000005";
+    const EXCEPTION = {
+      id: EXCEPTION_ID,
+      merchantId: MERCHANT_ID,
+      resourceId: RESOURCE_ID,
+      startsAt: "2026-12-25T00:00:00.000Z",
+      endsAt: "2026-12-26T00:00:00.000Z",
+      kind: "BLACKOUT" as const,
+      note: "Holiday",
+    };
+    const fetchMock = mockFetchSequence(
+      { ok: true, body: [LOCATION] }, // GET /locations
+      { ok: true, body: [RESOURCE] }, // GET /resources
+      { ok: true, body: [] }, // GET /resources/:id/availability-rules (initial)
+      { ok: true, body: [] }, // GET /resources/:id/availability-exceptions (initial)
+      { ok: true, body: { free: [] } }, // GET /resources/:id/availability (initial)
+      { ok: true, body: { id: EXCEPTION_ID } }, // POST /resources/:id/availability-exceptions
+      { ok: true, body: [] }, // GET /resources/:id/availability-rules (refetch)
+      { ok: true, body: [EXCEPTION] }, // GET /resources/:id/availability-exceptions (refetch)
+      { ok: true, body: { free: [] } }, // GET /resources/:id/availability (refetch)
+    );
+    const user = userEvent.setup();
+    render(<ResourceAvailabilityEditor merchantId={MERCHANT_ID} />);
+
+    await screen.findByText("Jamie Rivera");
+
+    await user.selectOptions(screen.getByLabelText("Kind"), "BLACKOUT");
+    await user.type(screen.getByLabelText("Starts at (ISO)"), "2026-12-25T00:00:00.000Z");
+    await user.type(screen.getByLabelText("Ends at (ISO)"), "2026-12-26T00:00:00.000Z");
+    await user.type(screen.getByLabelText("Note (optional)"), "Holiday");
+    await user.click(screen.getByRole("button", { name: "Add exception" }));
+
+    await screen.findByText("BLACKOUT");
+    expect(screen.getByText("Holiday")).toBeInTheDocument();
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      6,
+      expect.stringContaining(`/resources/${RESOURCE_ID}/availability-exceptions`),
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({ "x-merchant-id": MERCHANT_ID }),
+        body: JSON.stringify({
+          startsAt: "2026-12-25T00:00:00.000Z",
+          endsAt: "2026-12-26T00:00:00.000Z",
+          kind: "BLACKOUT",
+          note: "Holiday",
+        }),
+      }),
+    );
   });
 });

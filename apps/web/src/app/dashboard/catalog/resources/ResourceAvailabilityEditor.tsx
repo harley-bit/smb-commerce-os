@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { z } from "zod";
-import type { AvailabilityRule, Location, Resource } from "@smb-os/contracts";
+import type { AvailabilityException, AvailabilityRule, Location, Resource } from "@smb-os/contracts";
 import { Button, TextField } from "../../../../components";
 import { formatIntervalInZone, type FreeInterval } from "./formatIntervalInZone";
 
@@ -23,6 +23,16 @@ const ruleDraftSchema = z.object({
   weekday: z.number().int().min(0).max(6),
   startTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "expected HH:MM"),
   endTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "expected HH:MM"),
+});
+
+/**
+ * Structural mirror of `@smb-os/contracts`'s `createAvailabilityExceptionInputSchema`
+ * — same "use client" bundle-size posture as `ruleDraftSchema` above.
+ */
+const exceptionDraftSchema = z.object({
+  startsAt: z.string().min(1, "required"),
+  endsAt: z.string().min(1, "required"),
+  kind: z.enum(["BLACKOUT", "EXTRA"]),
 });
 
 export interface ResourceAvailabilityEditorProps {
@@ -52,10 +62,15 @@ export function ResourceAvailabilityEditor({ merchantId }: ResourceAvailabilityE
   const [resources, setResources] = useState<Resource[] | null>(null);
   const [selectedResourceId, setSelectedResourceId] = useState("");
   const [rules, setRules] = useState<AvailabilityRule[]>([]);
+  const [exceptions, setExceptions] = useState<AvailabilityException[]>([]);
   const [free, setFree] = useState<FreeInterval[]>([]);
   const [weekday, setWeekday] = useState("1");
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
+  const [exceptionKind, setExceptionKind] = useState<"BLACKOUT" | "EXTRA">("BLACKOUT");
+  const [exceptionStartsAt, setExceptionStartsAt] = useState("");
+  const [exceptionEndsAt, setExceptionEndsAt] = useState("");
+  const [exceptionNote, setExceptionNote] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -101,6 +116,12 @@ export function ResourceAvailabilityEditor({ merchantId }: ResourceAvailabilityE
       headers: { "x-merchant-id": merchantId },
     });
     setRules(rulesResponse.ok ? ((await rulesResponse.json()) as AvailabilityRule[]) : []);
+
+    const exceptionsResponse = await fetch(`${API_BASE_URL}/resources/${resourceId}/availability-exceptions`, {
+      credentials: "include",
+      headers: { "x-merchant-id": merchantId },
+    });
+    setExceptions(exceptionsResponse.ok ? ((await exceptionsResponse.json()) as AvailabilityException[]) : []);
 
     const from = new Date().toISOString();
     const to = new Date(Date.now() + AVAILABILITY_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
@@ -152,6 +173,44 @@ export function ResourceAvailabilityEditor({ merchantId }: ResourceAvailabilityE
     }
     setStartTime("");
     setEndTime("");
+    await loadRulesAndAvailability(selectedResourceId);
+  }
+
+  /**
+   * `docs/cards/D113.md` deliverable — "Blackouts and extra openings."
+   * Acceptance criterion: "Exception blocks or opens the expected window" —
+   * proved server-side by `apps/api/test/resources.test.ts`'s BLACKOUT/EXTRA
+   * test against the real `AvailabilityService`; this handler is the
+   * dashboard surface that writes the exception the merchant configures.
+   */
+  async function handleAddException() {
+    setError(null);
+    const parsed = exceptionDraftSchema.safeParse({
+      startsAt: exceptionStartsAt,
+      endsAt: exceptionEndsAt,
+      kind: exceptionKind,
+    });
+    if (!parsed.success) {
+      setError(parsed.error.issues[0]?.message ?? "Invalid exception.");
+      return;
+    }
+    if (!selectedResourceId) {
+      setError("Choose a resource first.");
+      return;
+    }
+    const response = await fetch(`${API_BASE_URL}/resources/${selectedResourceId}/availability-exceptions`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "content-type": "application/json", "x-merchant-id": merchantId },
+      body: JSON.stringify({ ...parsed.data, ...(exceptionNote ? { note: exceptionNote } : {}) }),
+    });
+    if (!response.ok) {
+      setError("Could not save the exception.");
+      return;
+    }
+    setExceptionStartsAt("");
+    setExceptionEndsAt("");
+    setExceptionNote("");
     await loadRulesAndAvailability(selectedResourceId);
   }
 
@@ -232,6 +291,60 @@ export function ResourceAvailabilityEditor({ merchantId }: ResourceAvailabilityE
               onChange={(event) => setEndTime(event.target.value)}
             />
             <Button onClick={() => void handleAddRule()}>Add weekly rule</Button>
+          </section>
+
+          <section>
+            <h2>Exceptions</h2>
+            {exceptions.length === 0 ? (
+              <p>No exceptions yet.</p>
+            ) : (
+              <table>
+                <thead>
+                  <tr>
+                    <th>Kind</th>
+                    <th>Starts</th>
+                    <th>Ends</th>
+                    <th>Note</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {exceptions.map((exception) => (
+                    <tr key={exception.id}>
+                      <td>{exception.kind}</td>
+                      <td>{exception.startsAt}</td>
+                      <td>{exception.endsAt}</td>
+                      <td>{exception.note ?? ""}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+
+            <label htmlFor="exception-kind">Kind</label>
+            <select
+              id="exception-kind"
+              value={exceptionKind}
+              onChange={(event) => setExceptionKind(event.target.value as "BLACKOUT" | "EXTRA")}
+            >
+              <option value="BLACKOUT">Blackout</option>
+              <option value="EXTRA">Extra opening</option>
+            </select>
+            <TextField
+              label="Starts at (ISO)"
+              value={exceptionStartsAt}
+              onChange={(event) => setExceptionStartsAt(event.target.value)}
+            />
+            <TextField
+              label="Ends at (ISO)"
+              value={exceptionEndsAt}
+              onChange={(event) => setExceptionEndsAt(event.target.value)}
+            />
+            <TextField
+              label="Note (optional)"
+              value={exceptionNote}
+              onChange={(event) => setExceptionNote(event.target.value)}
+            />
+            <Button onClick={() => void handleAddException()}>Add exception</Button>
           </section>
 
           <section>
