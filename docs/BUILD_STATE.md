@@ -77,7 +77,7 @@
 
 ## Current card
 
-**Now current: `D144` (Phase 8 — Mobile Application, Mobile customer flows — Listing detail: service). No gate. `D142` closed Done this session — see below.**
+**Now current: `D145` (Phase 8 — Mobile Application, Mobile customer flows — Listing detail: service). No gate. `D142` closed Done this session — see below.**
 
 **D142 background (Listing detail: product) — Done:**
 New `fetchProductDetail.ts` calls the existing `GET /v1/m/{slug}/listings/{listingSlug}` and validates against `@smb-os/contracts`'s `publicProductDetailSchema` with `cache: "no-store"` on every request (this card's security check, "prices fetched server-side, never cached stale," answered by construction — no persistence layer exists anywhere in the module). New `ProductDetailScreen.tsx` renders variants with price/stock and a "Buy" button that pushes to `Checkout` when in stock — this card's acceptance criterion ("purchase path reaches checkout") — without a real cart write, since `CartService` still has no HTTP route (open since D126). `App.tsx` now routes `ListingDetail` to this real screen; SERVICE/RENTAL listings show a static notice pending D143/D144. Full gate green (12/12 lint, 10/10 typecheck, 11/11 test tasks incl. 44/44 in `@smb-os/mobile`), both platforms confirmed bundling clean via `expo export`. Full detail in `docs/logs/D142.md`. **Pointer advances to `D143`.**
