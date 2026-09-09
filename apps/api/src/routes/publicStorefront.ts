@@ -1,15 +1,19 @@
 import type { FastifyInstance } from "fastify";
 import { createTenantContext } from "@smb-os/domain";
 import {
+  InventoryMovementRepository,
   ListingRepository,
   ListingService,
   MerchantRepository,
+  VariantRepository,
+  VariantService,
   runSqliteMigrations,
   type Connection,
   type Listing,
   type ListingMode,
+  type Variant,
 } from "@smb-os/db";
-import type { PublicListing, PublicMerchantProfile } from "@smb-os/contracts";
+import type { PublicListing, PublicMerchantProfile, PublicProductDetail, PublicVariant } from "@smb-os/contracts";
 import { SlidingWindowRateLimiter } from "../auth/rateLimiter.js";
 import { problemType, sendProblem } from "../problemDetails.js";
 
@@ -18,6 +22,8 @@ const LISTING_MODES: readonly ListingMode[] = ["PRODUCT", "SERVICE", "RENTAL"];
 interface PublicStorefrontServices {
   merchants: MerchantRepository;
   listings: ListingService;
+  variants: VariantService;
+  movements: InventoryMovementRepository;
 }
 
 /**
@@ -31,6 +37,8 @@ function createServiceFactory(connection: Connection): () => Promise<PublicStore
     ready ??= runSqliteMigrations(connection).then(() => ({
       merchants: new MerchantRepository(connection),
       listings: new ListingService(new ListingRepository(connection)),
+      variants: new VariantService(new VariantRepository(connection)),
+      movements: new InventoryMovementRepository(connection),
     }));
     return ready;
   };
@@ -43,6 +51,26 @@ function toPublicListing(listing: Listing): PublicListing {
     name: listing.name,
     slug: listing.slug,
     description: listing.description,
+  };
+}
+
+/**
+ * This card's (D122) security check: `stockStatus` is a bucketed enum
+ * derived from `InventoryMovementRepository.sumStock` — the raw sum itself
+ * (a number a competitor could read off a public page) never leaves this
+ * function. Summed across all locations (no `locationId` filter): a
+ * storefront visitor cares whether a variant can be ordered at all, not
+ * per-location detail.
+ */
+function toPublicVariant(variant: Variant, stock: number): PublicVariant {
+  return {
+    id: variant.id,
+    sku: variant.sku,
+    name: variant.name,
+    priceMinor: variant.priceMinor,
+    currency: variant.currency,
+    attributesJson: variant.attributesJson,
+    stockStatus: stock > 0 ? "IN_STOCK" : "OUT_OF_STOCK",
   };
 }
 
@@ -116,6 +144,43 @@ export function registerPublicStorefrontRoutes(
         .filter((listing) => mode === undefined || listing.mode === mode)
         .map(toPublicListing);
       return reply.code(200).send(published);
+    },
+  );
+
+  /**
+   * `docs/cards/D122.md`'s product detail page — this route is
+   * deliberately PRODUCT-only (the card's scope); a SERVICE/RENTAL
+   * listing's slug 404s here exactly like an unknown one, no different
+   * response shape that would confirm it exists under a mode this route
+   * doesn't yet serve. Same unauthenticated + rate-limited + `PUBLISHED`-
+   * only posture as the two routes above.
+   */
+  app.get<{ Params: { slug: string; listingSlug: string } }>(
+    "/v1/m/:slug/listings/:listingSlug",
+    async (request, reply) => {
+      if (!limiter.consume(`ip:${request.ip}`)) {
+        return sendProblem(request, reply, 429, problemType("rate-limited"), "Too Many Requests", "Too many requests. Try again later.");
+      }
+
+      const { merchants, listings, variants, movements } = await getServices();
+      const merchant = merchants.findBySlug(request.params.slug);
+      if (!merchant) {
+        return sendProblem(request, reply, 404, problemType("not-found"), "Not Found", "No merchant with that slug.");
+      }
+
+      const ctx = createTenantContext(merchant.id);
+      const listing = listings.findPublishedBySlug(ctx, request.params.listingSlug);
+      if (!listing || listing.mode !== "PRODUCT") {
+        return sendProblem(request, reply, 404, problemType("not-found"), "Not Found", "No listing with that slug.");
+      }
+
+      const detail: PublicProductDetail = {
+        ...toPublicListing(listing),
+        variants: variants
+          .listByListing(ctx, listing.id)
+          .map((variant) => toPublicVariant(variant, movements.sumStock(ctx, variant.id))),
+      };
+      return reply.code(200).send(detail);
     },
   );
 }

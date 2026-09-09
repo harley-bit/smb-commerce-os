@@ -83,4 +83,30 @@ describe("MerchantPageView", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent(/could not.*find/i);
   });
+
+  it("links a product listing to its detail page, per D122", async () => {
+    mockStorefront({
+      listings: [{ id: "l-1", mode: "PRODUCT", name: "Wool Sweater", slug: "wool-sweater", description: null }],
+    });
+
+    render(<MerchantPageView slug={SLUG} />);
+
+    const link = await screen.findByRole("link", { name: "Wool Sweater" });
+    expect(link).toHaveAttribute("href", `/m/${SLUG}/l/wool-sweater`);
+  });
+
+  it("does not link a service or rental listing — no detail page exists for those yet", async () => {
+    mockStorefront({
+      listings: [
+        { id: "l-2", mode: "SERVICE", name: "Haircut", slug: "haircut", description: null },
+        { id: "l-3", mode: "RENTAL", name: "Camping Tent", slug: "camping-tent", description: null },
+      ],
+    });
+
+    render(<MerchantPageView slug={SLUG} />);
+
+    await screen.findByText("Haircut");
+    expect(screen.queryByRole("link", { name: "Haircut" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Camping Tent" })).not.toBeInTheDocument();
+  });
 });

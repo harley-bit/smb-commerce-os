@@ -85,6 +85,17 @@ export class ListingService {
     return this.repo.list(ctx).filter((listing) => listing.status === "PUBLISHED");
   }
 
+  /**
+   * `docs/cards/D122.md`'s listing detail page: a storefront visitor
+   * navigates by `slug`, never by DB-internal `id` (same posture as
+   * `MerchantRepository.findBySlug`). Only ever returns a `PUBLISHED`
+   * listing, same as `listPublished` — a draft/archived listing's slug
+   * must 404 exactly like an unknown one.
+   */
+  findPublishedBySlug(ctx: TenantContext, slug: string): Listing | undefined {
+    return this.repo.list(ctx).find((listing) => listing.status === "PUBLISHED" && listing.slug === slug);
+  }
+
   findById(ctx: TenantContext, id: string): Listing | undefined {
     return this.repo.findById(ctx, id);
   }

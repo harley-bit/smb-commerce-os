@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import type { ListingMode, PublicListing, PublicMerchantProfile } from "@smb-os/contracts";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
@@ -81,7 +82,13 @@ export function MerchantPageView({ slug }: MerchantPageViewProps) {
             ) : (
               <ul>
                 {inMode.map((listing) => (
-                  <li key={listing.id}>{listing.name}</li>
+                  <li key={listing.id}>
+                    {listing.mode === "PRODUCT" ? (
+                      <Link href={`/m/${slug}/l/${listing.slug}`}>{listing.name}</Link>
+                    ) : (
+                      listing.name
+                    )}
+                  </li>
                 ))}
               </ul>
             )}

@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  InventoryMovementRepository,
   ListingRepository,
   ListingService,
+  LocationRepository,
   MerchantRepository,
+  UserRepository,
+  VariantRepository,
+  VariantService,
   createConnection,
   runSqliteMigrations,
   type Connection,
@@ -72,6 +77,168 @@ async function setupFixture(): Promise<Fixture> {
 
   return { connection, slug, merchantId: ctx.merchantId };
 }
+
+interface ProductDetailFixture {
+  connection: Connection;
+  slug: string;
+  merchantId: string;
+  inStockVariantId: string;
+  outOfStockVariantId: string;
+}
+
+async function setupProductDetailFixture(): Promise<ProductDetailFixture> {
+  const connection = createConnection(":memory:");
+  await runSqliteMigrations(connection);
+
+  const merchants = new MerchantRepository(connection);
+  const ctx = createTenantContext(generateUuidV7());
+  const slug = `acme-${generateUuidV7()}`;
+  merchants.create(ctx, {
+    name: "Acme",
+    slug,
+    status: "ACTIVE",
+    defaultCurrency: "USD",
+    createdAt: CREATED_AT,
+  });
+
+  const listings = new ListingService(new ListingRepository(connection));
+  const listingId = listings.create(ctx, "OWNER", {
+    mode: "PRODUCT",
+    name: "Wool Sweater",
+    slug: "wool-sweater",
+    status: "PUBLISHED",
+    createdAt: CREATED_AT,
+  });
+  listings.create(ctx, "OWNER", {
+    mode: "PRODUCT",
+    name: "Unfinished Draft",
+    slug: "unfinished-draft",
+    status: "DRAFT",
+    createdAt: CREATED_AT,
+  });
+  listings.create(ctx, "OWNER", {
+    mode: "SERVICE",
+    name: "Haircut",
+    slug: "haircut",
+    status: "PUBLISHED",
+    createdAt: CREATED_AT,
+  });
+
+  const variants = new VariantService(new VariantRepository(connection));
+  const inStockVariantId = variants.create(ctx, "OWNER", {
+    listingId,
+    mode: "PRODUCT",
+    sku: "SWEATER-M",
+    name: "Medium",
+    priceMinor: 4500,
+    currency: "USD",
+  });
+  const outOfStockVariantId = variants.create(ctx, "OWNER", {
+    listingId,
+    mode: "PRODUCT",
+    sku: "SWEATER-L",
+    name: "Large",
+    priceMinor: 4500,
+    currency: "USD",
+  });
+
+  const locations = new LocationRepository(connection);
+  const locationId = locations.create(ctx, { name: "Main", timezone: "America/New_York" });
+
+  const users = new UserRepository(connection);
+  const actorUserId = users.create({ email: "staff@example.com", status: "ACTIVE", createdAt: CREATED_AT });
+
+  const movements = new InventoryMovementRepository(connection);
+  movements.record(ctx, {
+    variantId: inStockVariantId,
+    locationId,
+    kind: "RECEIPT",
+    quantity: 25,
+    occurredAt: CREATED_AT,
+    actorUserId,
+    note: "Initial delivery",
+  });
+  // outOfStockVariantId deliberately gets no RECEIPT — sums to 0.
+
+  return { connection, slug, merchantId: ctx.merchantId, inStockVariantId, outOfStockVariantId };
+}
+
+describe("GET /v1/m/:slug/listings/:listingSlug", () => {
+  it("returns the product detail with variants and their bucketed stock status", async () => {
+    const fx = await setupProductDetailFixture();
+    const app = buildApp({ connection: fx.connection });
+
+    const res = await app.inject({ method: "GET", url: `/v1/m/${fx.slug}/listings/wool-sweater` });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { name: string; variants: Array<{ id: string; stockStatus: string }> };
+    expect(body.name).toBe("Wool Sweater");
+    expect(body.variants.find((v) => v.id === fx.inStockVariantId)?.stockStatus).toBe("IN_STOCK");
+    expect(body.variants.find((v) => v.id === fx.outOfStockVariantId)?.stockStatus).toBe("OUT_OF_STOCK");
+  });
+
+  it("never exposes the raw stock count, merchantId, or listingId on a variant", async () => {
+    const fx = await setupProductDetailFixture();
+    const app = buildApp({ connection: fx.connection });
+
+    const res = await app.inject({ method: "GET", url: `/v1/m/${fx.slug}/listings/wool-sweater` });
+    const body = res.json() as { variants: Array<Record<string, unknown>> };
+
+    for (const variant of body.variants) {
+      expect(variant).not.toHaveProperty("merchantId");
+      expect(variant).not.toHaveProperty("listingId");
+      expect(variant).not.toHaveProperty("quantityOnHand");
+      expect(variant).not.toHaveProperty("stock");
+    }
+  });
+
+  it("returns 404 for a DRAFT listing's slug", async () => {
+    const fx = await setupProductDetailFixture();
+    const app = buildApp({ connection: fx.connection });
+
+    const res = await app.inject({ method: "GET", url: `/v1/m/${fx.slug}/listings/unfinished-draft` });
+
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("returns 404 for an unknown listing slug", async () => {
+    const fx = await setupProductDetailFixture();
+    const app = buildApp({ connection: fx.connection });
+
+    const res = await app.inject({ method: "GET", url: `/v1/m/${fx.slug}/listings/no-such-listing` });
+
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("returns 404 for an unknown merchant slug", async () => {
+    const fx = await setupProductDetailFixture();
+    const app = buildApp({ connection: fx.connection });
+
+    const res = await app.inject({ method: "GET", url: "/v1/m/no-such-merchant/listings/wool-sweater" });
+
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("returns 404 for a non-PRODUCT listing — this card's scope is product detail only", async () => {
+    const fx = await setupProductDetailFixture();
+    const app = buildApp({ connection: fx.connection });
+
+    const res = await app.inject({ method: "GET", url: `/v1/m/${fx.slug}/listings/haircut` });
+
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("rate limits repeated requests from the same IP", async () => {
+    const fx = await setupProductDetailFixture();
+    const app = buildApp({ connection: fx.connection, publicCatalogRateLimit: { limit: 2, windowMs: 60_000 } });
+
+    await app.inject({ method: "GET", url: `/v1/m/${fx.slug}/listings/wool-sweater` });
+    await app.inject({ method: "GET", url: `/v1/m/${fx.slug}/listings/wool-sweater` });
+    const res = await app.inject({ method: "GET", url: `/v1/m/${fx.slug}/listings/wool-sweater` });
+
+    expect(res.statusCode).toBe(429);
+  });
+});
 
 describe("GET /v1/m/:slug", () => {
   it("returns a public profile without requiring authentication", async () => {

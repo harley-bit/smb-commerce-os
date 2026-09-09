@@ -33,3 +33,41 @@ export const publicListingSchema = z.object({
   description: z.string().nullable(),
 });
 export type PublicListing = z.infer<typeof publicListingSchema>;
+
+/**
+ * `docs/cards/D122.md`'s security check: stock is never exposed as the raw
+ * count `packages/db/src/repositories/InventoryMovementRepository.ts`'s
+ * `sumStock` computes — a competitor could otherwise read exact
+ * quantities off a public page. Only this bucket ever leaves the server,
+ * same posture as `InventoryUnitService`'s merchant-facing `RentalStatus`
+ * enum (`packages/db/src/services/InventoryUnitService.ts`).
+ */
+export const publicStockStatusSchema = z.enum(["IN_STOCK", "OUT_OF_STOCK"]);
+export type PublicStockStatus = z.infer<typeof publicStockStatusSchema>;
+
+/**
+ * The public read of `packages/db/src/repositories/VariantRepository.ts`'s
+ * `Variant` — `merchantId`/`listingId` dropped (the caller already scoped
+ * by listing), mode-specific service/rental fields dropped (this schema is
+ * PRODUCT-only, D122's scope), and the raw stock number replaced by
+ * `stockStatus` above.
+ */
+export const publicVariantSchema = z.object({
+  id: z.string().min(1),
+  sku: z.string().min(1),
+  name: z.string().min(1),
+  priceMinor: z.number().int(),
+  currency: z.string().min(1),
+  attributesJson: z.string().nullable(),
+  stockStatus: publicStockStatusSchema,
+});
+export type PublicVariant = z.infer<typeof publicVariantSchema>;
+
+/**
+ * `docs/cards/D122.md`'s deliverable — a product listing plus its
+ * variants, each carrying a bucketed stock status instead of a count.
+ */
+export const publicProductDetailSchema = publicListingSchema.extend({
+  variants: z.array(publicVariantSchema),
+});
+export type PublicProductDetail = z.infer<typeof publicProductDetailSchema>;

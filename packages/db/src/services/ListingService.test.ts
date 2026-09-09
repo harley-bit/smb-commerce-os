@@ -221,6 +221,48 @@ describe("ListingService", () => {
     expect(service.listPublished(ctxB)).toEqual([]);
   });
 
+  it("findPublishedBySlug() returns a PUBLISHED listing by slug", () => {
+    const ctx = createTenantContext(merchantA);
+    service.create(ctx, "OWNER", {
+      mode: "PRODUCT",
+      name: "Wool Sweater",
+      slug: "wool-sweater",
+      status: "PUBLISHED",
+      createdAt: "2026-09-08T00:00:00.000Z",
+    });
+
+    const found = service.findPublishedBySlug(ctx, "wool-sweater");
+
+    expect(found?.name).toBe("Wool Sweater");
+  });
+
+  it("findPublishedBySlug() does not return a DRAFT or ARCHIVED listing", () => {
+    const ctx = createTenantContext(merchantA);
+    service.create(ctx, "OWNER", {
+      mode: "PRODUCT",
+      name: "Unfinished Draft",
+      slug: "unfinished-draft",
+      status: "DRAFT",
+      createdAt: "2026-09-08T00:00:00.000Z",
+    });
+
+    expect(service.findPublishedBySlug(ctx, "unfinished-draft")).toBeUndefined();
+  });
+
+  it("findPublishedBySlug() is tenant-isolated via the repository's scope", () => {
+    const ctxA = createTenantContext(merchantA);
+    const ctxB = createTenantContext(merchantB);
+    service.create(ctxA, "OWNER", {
+      mode: "PRODUCT",
+      name: "A Product",
+      slug: "a-product",
+      status: "PUBLISHED",
+      createdAt: "2026-09-08T00:00:00.000Z",
+    });
+
+    expect(service.findPublishedBySlug(ctxB, "a-product")).toBeUndefined();
+  });
+
   it("service methods are cross-tenant isolated via the repository's scope", () => {
     const ctxA = createTenantContext(merchantA);
     const ctxB = createTenantContext(merchantB);
