@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   assertCan,
+  classifyDepositForDashboard,
   DepositHoldAlreadyResolvedError,
   ForbiddenActionError,
   IllegalDamageClaimTransitionError,
@@ -165,6 +166,36 @@ export function registerDamageClaimRoutes(
       });
     },
   );
+
+  /**
+   * `docs/cards/D119.md` — Deposit management view: held, released,
+   * captured, expiring soon, all in one merchant-wide read. Gated on
+   * `bookings:view` like the other deposit reads in this file, open to
+   * every merchant role. This card's acceptance criterion ("expiring holds
+   * surfaced before they lapse") is answered by `bucket`, computed
+   * server-side via `classifyDepositForDashboard` (`@smb-os/domain`) so
+   * the UI never has to re-derive the expiring-soon window itself —
+   * ordering (soonest-`expiresAt`-first, from `listAll`) puts the
+   * most time-sensitive holds first regardless of bucket.
+   */
+  app.get("/deposits", { preHandler: app.authenticate }, async (request, reply) => {
+    assertCan({ role: request.auth!.role }, "bookings:view");
+    const { deposits } = await getServices();
+    const now = new Date().toISOString();
+    const rows = deposits.listAll(request.auth!.tenant).map((deposit) => ({
+      id: deposit.id,
+      orderLineId: deposit.orderLineId,
+      amountMinor: deposit.amountMinor,
+      currency: deposit.currency,
+      state: deposit.state,
+      authorizedAt: deposit.authorizedAt,
+      expiresAt: deposit.expiresAt,
+      capturedMinor: deposit.capturedMinor,
+      releasedAt: deposit.releasedAt,
+      bucket: classifyDepositForDashboard(deposit.state, deposit.expiresAt, now),
+    }));
+    return reply.code(200).send(rows);
+  });
 
   app.post<{ Params: { claimId: string }; Body: unknown }>(
     "/damage-claims/:claimId/notify",

@@ -4,7 +4,7 @@ import {
   type DepositEvent,
   type DepositState,
 } from "@smb-os/domain";
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import type { Connection } from "../connection.js";
 import { depositAuthorizations } from "../schema/sqlite.js";
 import { TenantScopedRepository, type RepositoryMethod } from "../tenancy/TenantScopedRepository.js";
@@ -84,6 +84,21 @@ export class DepositAuthorizationRepository extends TenantScopedRepository<typeo
       .from(depositAuthorizations)
       .where(and(this.scope(ctx), eq(depositAuthorizations.orderLineId, orderLineId)))
       .get() as DepositAuthorization | undefined;
+  };
+
+  /**
+   * `docs/cards/D119.md` — the deposit management view's merchant-wide
+   * read: every deposit authorization this merchant holds, regardless of
+   * order line, soonest-`expiresAt`-first so an "expiring soon" section
+   * needs no separate sort in the caller.
+   */
+  listAll: RepositoryMethod<[], DepositAuthorization[]> = (ctx) => {
+    return this.conn.db
+      .select()
+      .from(depositAuthorizations)
+      .where(this.scope(ctx))
+      .orderBy(asc(depositAuthorizations.expiresAt))
+      .all() as DepositAuthorization[];
   };
 
   private transition: RepositoryMethod<

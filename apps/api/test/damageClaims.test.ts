@@ -297,6 +297,108 @@ describe("damage claim routes — D118", () => {
     });
   });
 
+  describe("GET /deposits — D119 deposit management view", () => {
+    it("returns 200 with an empty list when no deposits exist", async () => {
+      const base = await setupBase();
+      const owner = buildRoleApp(base, "OWNER");
+
+      const res = await owner.app.inject({ method: "GET", url: "/deposits", headers: owner.headers });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual([]);
+    });
+
+    it("buckets a freshly authorized hold as HELD", async () => {
+      const base = await setupBase();
+      const owner = buildRoleApp(base, "OWNER");
+      await placeDepositHold(base);
+
+      const res = await owner.app.inject({ method: "GET", url: "/deposits", headers: owner.headers });
+
+      expect(res.statusCode).toBe(200);
+      const rows = res.json() as Array<{ orderLineId: string; state: string; bucket: string; amountMinor: number }>;
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ orderLineId: base.orderLineId, state: "AUTHORIZED", bucket: "HELD", amountMinor: DEPOSIT_MINOR });
+    });
+
+    it("buckets a captured hold as CAPTURED", async () => {
+      const base = await setupBase();
+      const owner = buildRoleApp(base, "OWNER");
+      await placeDepositHold(base);
+      const claimId = await fileAndNotify(base, owner);
+      await owner.app.inject({
+        method: "POST",
+        url: `/damage-claims/${claimId}/capture`,
+        headers: owner.headers,
+        payload: { amountMinor: DEPOSIT_MINOR, idempotencyKey: "cap-1", capturedAt: CREATED_AT },
+      });
+
+      const res = await owner.app.inject({ method: "GET", url: "/deposits", headers: owner.headers });
+
+      const rows = res.json() as Array<{ state: string; bucket: string }>;
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ state: "CAPTURED", bucket: "CAPTURED" });
+    });
+
+    it("buckets a released hold as RELEASED", async () => {
+      const base = await setupBase();
+      const owner = buildRoleApp(base, "OWNER");
+      await placeDepositHold(base);
+      const deposits = new DepositAuthorizationRepository(base.connection);
+      const depositService = new DepositAuthorizationService(
+        new OrderRepository(base.connection),
+        new PaymentRepository(base.connection),
+        deposits,
+        base.depositHoldProvider,
+      );
+      const ctx = createTenantContext(base.merchantId);
+      const deposit = deposits.findByOrderLineId(ctx, base.orderLineId)!;
+      await depositService.releaseHold(ctx, { depositAuthorizationId: deposit.id, releasedAt: CREATED_AT });
+
+      const res = await owner.app.inject({ method: "GET", url: "/deposits", headers: owner.headers });
+
+      const rows = res.json() as Array<{ state: string; bucket: string }>;
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ state: "RELEASED", bucket: "RELEASED" });
+    });
+
+    it("buckets a still-AUTHORIZED hold within 72h of expiry as EXPIRING_SOON, not HELD", async () => {
+      const base = await setupBase();
+      // A 1-day provider authorization window puts expiresAt well inside the 72h expiring-soon window from CREATED_AT.
+      const shortWindowProvider = new SimulatedDepositHoldProvider(() => new Date(CREATED_AT), 1);
+      const shortBase = { ...base, depositHoldProvider: shortWindowProvider };
+      await placeDepositHold(shortBase);
+      const shortOwner = buildRoleApp(shortBase, "OWNER");
+
+      const res = await shortOwner.app.inject({ method: "GET", url: "/deposits", headers: shortOwner.headers });
+
+      const rows = res.json() as Array<{ state: string; bucket: string }>;
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ state: "AUTHORIZED", bucket: "EXPIRING_SOON" });
+    });
+
+    it("is readable by READ_ONLY", async () => {
+      const base = await setupBase();
+      const readOnly = buildRoleApp(base, "READ_ONLY");
+      await placeDepositHold(base);
+
+      const res = await readOnly.app.inject({ method: "GET", url: "/deposits", headers: readOnly.headers });
+
+      expect(res.statusCode).toBe(200);
+    });
+
+    it("does not leak another merchant's deposits", async () => {
+      const base = await setupBase();
+      const other = await setupBase();
+      const owner = buildRoleApp(base, "OWNER");
+      await placeDepositHold(other);
+
+      const res = await owner.app.inject({ method: "GET", url: "/deposits", headers: owner.headers });
+
+      expect(res.json()).toEqual([]);
+    });
+  });
+
   describe("POST /damage-claims/:claimId/notify", () => {
     it("moves a claim to CUSTOMER_NOTIFIED", async () => {
       const base = await setupBase();

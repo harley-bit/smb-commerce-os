@@ -213,6 +213,39 @@ describe("DepositAuthorizationRepository", () => {
     expect(deposits.findByOrderLineId(ctxA, orderLineA)).toBeDefined();
   });
 
+  it("lists all deposit authorizations for a merchant, ordered by soonest expiry first", () => {
+    const ctx = createTenantContext(merchantA);
+    const laterId = deposits.create(ctx, {
+      orderLineId: orderLineA,
+      paymentId: paymentA,
+      amountMinor: 5000,
+      currency: "USD",
+      authorizedAt: "2026-09-08T00:00:00.000Z",
+      expiresAt: "2026-11-08T00:00:00.000Z",
+    });
+    const soonerId = deposits.create(ctx, {
+      orderLineId: orderLineA,
+      paymentId: paymentA,
+      amountMinor: 3000,
+      currency: "USD",
+      authorizedAt: "2026-09-08T00:00:00.000Z",
+      expiresAt: "2026-09-09T00:00:00.000Z",
+    });
+
+    const rows = deposits.listAll(ctx);
+
+    expect(rows.map((row) => row.id)).toEqual([soonerId, laterId]);
+  });
+
+  it("does not let merchant B list merchant A's deposit authorizations", () => {
+    const ctxA = createTenantContext(merchantA);
+    const ctxB = createTenantContext(merchantB);
+    createAuthorized(20000);
+
+    expect(deposits.listAll(ctxA)).toHaveLength(1);
+    expect(deposits.listAll(ctxB)).toHaveLength(0);
+  });
+
   it("does not let merchant B create, read, capture, release, or expire merchant A's deposit authorization", () => {
     const ctxA = createTenantContext(merchantA);
     const ctxB = createTenantContext(merchantB);
