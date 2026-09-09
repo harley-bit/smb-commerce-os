@@ -277,6 +277,11 @@ export {
 } from "./services/CheckoutPaymentService.js";
 export { SimulatedDepositHoldProvider } from "./payments/SimulatedDepositHoldProvider.js";
 export {
+  DepositAuthorizationRepository,
+  type DepositAuthorization,
+  type CreateDepositAuthorizationInput,
+} from "./repositories/DepositAuthorizationRepository.js";
+export {
   DepositAuthorizationService,
   MissingHoldExpiryError,
   OrderLineHasNoDepositError,
