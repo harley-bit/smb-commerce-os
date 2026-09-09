@@ -9,12 +9,14 @@ import { OrderRepository } from "../repositories/OrderRepository.js";
 import { LocationRepository } from "../repositories/LocationRepository.js";
 import { InventoryUnitRepository } from "../repositories/InventoryUnitRepository.js";
 import { ConditionReportRepository } from "../repositories/ConditionReportRepository.js";
+import { ConditionMediaRepository } from "../repositories/ConditionMediaRepository.js";
 import { OrderLineNotFoundError } from "./FulfillmentEventService.js";
 import { ConditionReportService, MissingCheckoutBaselineError } from "./ConditionReportService.js";
 
 describe("ConditionReportService", () => {
   let connection: Connection;
   let conditionReports: ConditionReportRepository;
+  let conditionMedia: ConditionMediaRepository;
   let orderRepo: OrderRepository;
   let service: ConditionReportService;
   let merchantA: string;
@@ -32,7 +34,8 @@ describe("ConditionReportService", () => {
     const locationRepo = new LocationRepository(connection);
     const unitRepo = new InventoryUnitRepository(connection);
     conditionReports = new ConditionReportRepository(connection);
-    service = new ConditionReportService(conditionReports, orderRepo);
+    conditionMedia = new ConditionMediaRepository(connection);
+    service = new ConditionReportService(conditionReports, orderRepo, conditionMedia);
 
     merchantA = generateUuidV7();
     merchantB = generateUuidV7();
@@ -239,5 +242,78 @@ describe("ConditionReportService", () => {
         createdAt: "2026-09-10T09:00:00.000Z",
       }),
     ).toThrow(MissingCheckoutBaselineError);
+  });
+
+  it("getComparison() returns the CHECKOUT baseline with its media before any CHECKIN exists — docs/cards/D117.md", () => {
+    const ctx = createTenantContext(merchantA);
+    const checkoutReport = service.recordCheckout(ctx, "STAFF", {
+      orderLineId: orderLineA,
+      inventoryUnitId: inventoryUnitA,
+      conditionGrade: "GOOD",
+      createdBy: userA,
+      createdAt: "2026-09-10T08:55:00.000Z",
+    });
+    conditionMedia.create(ctx, {
+      conditionReportId: checkoutReport.id,
+      storageKey: "condition-media/checkout-1",
+      contentType: "image/jpeg",
+      bytes: 1024,
+      sha256: "a".repeat(64),
+      capturedAt: "2026-09-10T08:56:00.000Z",
+    });
+
+    const comparison = service.getComparison(ctx, "READ_ONLY", orderLineA);
+
+    expect(comparison.checkoutReport?.conditionGrade).toBe("GOOD");
+    expect(comparison.checkoutReport?.media).toMatchObject([{ sha256: "a".repeat(64) }]);
+    expect(comparison.checkinReport).toBeNull();
+    expect(comparison.delta).toBeNull();
+  });
+
+  it("getComparison() surfaces the grade delta and both reports' media side by side once a CHECKIN exists", () => {
+    const ctx = createTenantContext(merchantA);
+    const checkoutReport = service.recordCheckout(ctx, "STAFF", {
+      orderLineId: orderLineA,
+      inventoryUnitId: inventoryUnitA,
+      conditionGrade: "GOOD",
+      createdBy: userA,
+      createdAt: "2026-09-10T08:55:00.000Z",
+    });
+    conditionMedia.create(ctx, {
+      conditionReportId: checkoutReport.id,
+      storageKey: "condition-media/checkout-1",
+      contentType: "image/jpeg",
+      bytes: 1024,
+      sha256: "a".repeat(64),
+      capturedAt: "2026-09-10T08:56:00.000Z",
+    });
+    const { checkinReportId } = service.recordCheckin(ctx, "STAFF", {
+      orderLineId: orderLineA,
+      inventoryUnitId: inventoryUnitA,
+      conditionGrade: "FAIR",
+      notes: "New scratch on the side panel.",
+      createdBy: userA,
+      createdAt: "2026-09-12T09:00:00.000Z",
+    });
+    conditionMedia.create(ctx, {
+      conditionReportId: checkinReportId,
+      storageKey: "condition-media/checkin-1",
+      contentType: "image/jpeg",
+      bytes: 2048,
+      sha256: "b".repeat(64),
+      capturedAt: "2026-09-12T09:01:00.000Z",
+    });
+
+    const comparison = service.getComparison(ctx, "READ_ONLY", orderLineA);
+
+    expect(comparison.checkoutReport?.media).toMatchObject([{ sha256: "a".repeat(64) }]);
+    expect(comparison.checkinReport?.media).toMatchObject([{ sha256: "b".repeat(64) }]);
+    expect(comparison.delta).toMatchObject({ deltaSteps: -1, deteriorated: true });
+  });
+
+  it("getComparison() rejects an order line that doesn't belong to the caller's merchant — tenant isolation (G1)", () => {
+    const ctxB = createTenantContext(merchantB);
+
+    expect(() => service.getComparison(ctxB, "OWNER", orderLineA)).toThrow(OrderLineNotFoundError);
   });
 });

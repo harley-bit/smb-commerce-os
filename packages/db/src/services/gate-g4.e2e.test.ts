@@ -12,6 +12,7 @@ import { AuditLogRepository } from "../repositories/AuditLogRepository.js";
 import { ReservationRepository } from "../repositories/ReservationRepository.js";
 import { OrderRepository } from "../repositories/OrderRepository.js";
 import { ConditionReportRepository } from "../repositories/ConditionReportRepository.js";
+import { ConditionMediaRepository } from "../repositories/ConditionMediaRepository.js";
 import { FulfillmentEventRepository } from "../repositories/FulfillmentEventRepository.js";
 import { DepositAuthorizationRepository } from "../repositories/DepositAuthorizationRepository.js";
 import { verifyAuditChain } from "../audit/verifyChain.js";
@@ -65,13 +66,14 @@ describe("Gate G4 — rental lifecycle E2E", () => {
     reservationRepo = new ReservationRepository(connection);
     orderRepo = new OrderRepository(connection);
     conditionReportRepo = new ConditionReportRepository(connection);
+    const conditionMediaRepo = new ConditionMediaRepository(connection);
     eventRepo = new FulfillmentEventRepository(connection);
     depositRepo = new DepositAuthorizationRepository(connection);
 
     inventoryUnitService = new InventoryUnitService(unitRepo, auditLogRepo);
     inventoryService = new InventoryService(movementRepo, auditLogRepo);
     rentalReservationService = new RentalReservationService(variantRepo, unitRepo, reservationRepo);
-    conditionReportService = new ConditionReportService(conditionReportRepo, orderRepo);
+    conditionReportService = new ConditionReportService(conditionReportRepo, orderRepo, conditionMediaRepo);
     fulfillmentEventService = new FulfillmentEventService(orderRepo, eventRepo, reservationRepo, conditionReportRepo);
     productSaleService = new ProductSaleService(
       variantRepo,

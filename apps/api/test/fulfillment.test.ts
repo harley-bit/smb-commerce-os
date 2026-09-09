@@ -531,3 +531,273 @@ describe("Rental check-out flow (docs/cards/D116.md)", () => {
     expect(pickupRes.statusCode).toBe(401);
   });
 });
+
+describe("Rental check-in flow (docs/cards/D117.md)", () => {
+  /** Records a CHECKOUT report and pickup so the order line is IN_USE, ready for check-in. */
+  async function checkoutAndPickUp(
+    fx: Fixture,
+    orderLineId: string,
+    inventoryUnitId: string,
+  ): Promise<void> {
+    await fx.app.inject({
+      method: "POST",
+      url: `/order-lines/${orderLineId}/condition-reports/checkout`,
+      headers: fx.merchantHeader,
+      payload: { inventoryUnitId, conditionGrade: "GOOD", notes: "No visible damage at pickup." },
+    });
+    const pickupRes = await fx.app.inject({
+      method: "POST",
+      url: `/order-lines/${orderLineId}/pickup`,
+      headers: fx.merchantHeader,
+      payload: { occurredAt: "2026-10-02T09:00:00.000Z", note: "Customer picked up kayak." },
+    });
+    expect(pickupRes.statusCode).toBe(201);
+  }
+
+  it.each<MerchantUserRole>(["OWNER", "ADMIN", "STAFF"])(
+    "%s can record a CHECKIN condition report, see the grade delta, and complete the return",
+    async (role) => {
+      const fx = await setupFixture(role);
+      const { orderLineId, inventoryUnitId } = seedRentalOrderLine(fx.connection, fx.merchantId, fx.userId);
+      await checkoutAndPickUp(fx, orderLineId, inventoryUnitId);
+
+      const checkinRes = await fx.app.inject({
+        method: "POST",
+        url: `/order-lines/${orderLineId}/condition-reports/checkin`,
+        headers: fx.merchantHeader,
+        payload: { inventoryUnitId, conditionGrade: "FAIR", notes: "New scratch on the hull." },
+      });
+      expect(checkinRes.statusCode).toBe(201);
+      const checkin = checkinRes.json() as { delta: { deltaSteps: number; deteriorated: boolean } };
+      expect(checkin.delta).toMatchObject({ deltaSteps: -1, deteriorated: true });
+
+      const returnRes = await fx.app.inject({
+        method: "POST",
+        url: `/order-lines/${orderLineId}/return`,
+        headers: fx.merchantHeader,
+        payload: { occurredAt: "2026-10-03T09:00:00.000Z", note: "Kayak returned, hull scratched." },
+      });
+      expect(returnRes.statusCode).toBe(201);
+    },
+  );
+
+  it("this card's acceptance criterion: rejects a CHECKIN with no CHECKOUT baseline on file", async () => {
+    const fx = await setupFixture("STAFF");
+    const { orderLineId, inventoryUnitId } = seedRentalOrderLine(fx.connection, fx.merchantId, fx.userId);
+
+    const checkinRes = await fx.app.inject({
+      method: "POST",
+      url: `/order-lines/${orderLineId}/condition-reports/checkin`,
+      headers: fx.merchantHeader,
+      payload: { inventoryUnitId, conditionGrade: "FAIR" },
+    });
+    expect(checkinRes.statusCode).toBe(409);
+  });
+
+  it("READ_ONLY cannot record a CHECKIN or a return, but can still read the comparison", async () => {
+    const fx = await setupFixture("READ_ONLY");
+    const { orderLineId, inventoryUnitId } = seedRentalOrderLine(fx.connection, fx.merchantId, fx.userId);
+
+    const checkinRes = await fx.app.inject({
+      method: "POST",
+      url: `/order-lines/${orderLineId}/condition-reports/checkin`,
+      headers: fx.merchantHeader,
+      payload: { inventoryUnitId, conditionGrade: "FAIR" },
+    });
+    expect(checkinRes.statusCode).toBe(403);
+
+    const returnRes = await fx.app.inject({
+      method: "POST",
+      url: `/order-lines/${orderLineId}/return`,
+      headers: fx.merchantHeader,
+      payload: { occurredAt: CREATED_AT, note: "n/a" },
+    });
+    expect(returnRes.statusCode).toBe(403);
+
+    const comparisonRes = await fx.app.inject({
+      method: "GET",
+      url: `/order-lines/${orderLineId}/condition-reports`,
+      headers: fx.merchantHeader,
+    });
+    expect(comparisonRes.statusCode).toBe(200);
+  });
+
+  it("400s a checkin request sent with no body at all", async () => {
+    const fx = await setupFixture("STAFF");
+    const { orderLineId, inventoryUnitId } = seedRentalOrderLine(fx.connection, fx.merchantId, fx.userId);
+    await checkoutAndPickUp(fx, orderLineId, inventoryUnitId);
+
+    const res = await fx.app.inject({
+      method: "POST",
+      url: `/order-lines/${orderLineId}/condition-reports/checkin`,
+      headers: fx.merchantHeader,
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("records a CHECKIN with no notes supplied — notes defaults to null", async () => {
+    const fx = await setupFixture("STAFF");
+    const { orderLineId, inventoryUnitId } = seedRentalOrderLine(fx.connection, fx.merchantId, fx.userId);
+    await checkoutAndPickUp(fx, orderLineId, inventoryUnitId);
+
+    const res = await fx.app.inject({
+      method: "POST",
+      url: `/order-lines/${orderLineId}/condition-reports/checkin`,
+      headers: fx.merchantHeader,
+      payload: { inventoryUnitId, conditionGrade: "GOOD" },
+    });
+    expect(res.statusCode).toBe(201);
+  });
+
+  it("returns with no body at all, defaulting the note to empty and occurredAt to now", async () => {
+    const fx = await setupFixture("STAFF");
+    const { orderLineId, inventoryUnitId } = seedRentalOrderLine(fx.connection, fx.merchantId, fx.userId);
+    await checkoutAndPickUp(fx, orderLineId, inventoryUnitId);
+    await fx.app.inject({
+      method: "POST",
+      url: `/order-lines/${orderLineId}/condition-reports/checkin`,
+      headers: fx.merchantHeader,
+      payload: { inventoryUnitId, conditionGrade: "GOOD" },
+    });
+
+    const res = await fx.app.inject({
+      method: "POST",
+      url: `/order-lines/${orderLineId}/return`,
+      headers: fx.merchantHeader,
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("400s a checkin report with a missing inventoryUnitId or conditionGrade", async () => {
+    const fx = await setupFixture("STAFF");
+    const { orderLineId, inventoryUnitId } = seedRentalOrderLine(fx.connection, fx.merchantId, fx.userId);
+    await checkoutAndPickUp(fx, orderLineId, inventoryUnitId);
+
+    const missingUnit = await fx.app.inject({
+      method: "POST",
+      url: `/order-lines/${orderLineId}/condition-reports/checkin`,
+      headers: fx.merchantHeader,
+      payload: { conditionGrade: "FAIR" },
+    });
+    expect(missingUnit.statusCode).toBe(400);
+
+    const missingGrade = await fx.app.inject({
+      method: "POST",
+      url: `/order-lines/${orderLineId}/condition-reports/checkin`,
+      headers: fx.merchantHeader,
+      payload: { inventoryUnitId },
+    });
+    expect(missingGrade.statusCode).toBe(400);
+  });
+
+  it("is tenant-scoped — merchant B cannot record a CHECKIN or read the comparison for merchant A's order line", async () => {
+    const fxA = await setupFixture("OWNER");
+    const fxB = await setupFixture("OWNER");
+    const { orderLineId, inventoryUnitId } = seedRentalOrderLine(fxA.connection, fxA.merchantId, fxA.userId);
+    await checkoutAndPickUp(fxA, orderLineId, inventoryUnitId);
+
+    // `recordCheckin` (D075) reads merchant B's own tenant-scoped view of this
+    // `orderLineId`, which has no CHECKOUT report on it (merchant A's report is
+    // invisible to merchant B) — so this fails closed as "no baseline", 409, the
+    // same as any other order line with no CHECKOUT on file. No data about
+    // merchant A's report ever reaches merchant B's response either way.
+    const checkinRes = await fxB.app.inject({
+      method: "POST",
+      url: `/order-lines/${orderLineId}/condition-reports/checkin`,
+      headers: fxB.merchantHeader,
+      payload: { inventoryUnitId, conditionGrade: "FAIR" },
+    });
+    expect(checkinRes.statusCode).toBe(409);
+
+    const comparisonRes = await fxB.app.inject({
+      method: "GET",
+      url: `/order-lines/${orderLineId}/condition-reports`,
+      headers: fxB.merchantHeader,
+    });
+    expect(comparisonRes.statusCode).toBe(404);
+  });
+
+  it("404s a return for an order line that does not exist", async () => {
+    const fx = await setupFixture("STAFF");
+    const res = await fx.app.inject({
+      method: "POST",
+      url: `/order-lines/${generateUuidV7()}/return`,
+      headers: fx.merchantHeader,
+      payload: { occurredAt: CREATED_AT, note: "n/a" },
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("400s a return with an empty note — the event log is repudiation defence", async () => {
+    const fx = await setupFixture("STAFF");
+    const { orderLineId, inventoryUnitId } = seedRentalOrderLine(fx.connection, fx.merchantId, fx.userId);
+    await checkoutAndPickUp(fx, orderLineId, inventoryUnitId);
+
+    const res = await fx.app.inject({
+      method: "POST",
+      url: `/order-lines/${orderLineId}/return`,
+      headers: fx.merchantHeader,
+      payload: { occurredAt: CREATED_AT, note: "" },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("409s a return attempted before the order line has ever been picked up", async () => {
+    const fx = await setupFixture("STAFF");
+    const { orderLineId, inventoryUnitId } = seedRentalOrderLine(fx.connection, fx.merchantId, fx.userId);
+    await fx.app.inject({
+      method: "POST",
+      url: `/order-lines/${orderLineId}/condition-reports/checkout`,
+      headers: fx.merchantHeader,
+      payload: { inventoryUnitId, conditionGrade: "GOOD" },
+    });
+
+    const res = await fx.app.inject({
+      method: "POST",
+      url: `/order-lines/${orderLineId}/return`,
+      headers: fx.merchantHeader,
+      payload: { occurredAt: CREATED_AT, note: "Attempted return with no prior pickup." },
+    });
+    expect(res.statusCode).toBe(409);
+  });
+
+  it("surfaces both reports' confirmed media with server-verified hashes on the comparison read — this card's security check", async () => {
+    const fx = await setupFixture("STAFF");
+    const { orderLineId, inventoryUnitId } = seedRentalOrderLine(fx.connection, fx.merchantId, fx.userId);
+    await checkoutAndPickUp(fx, orderLineId, inventoryUnitId);
+
+    const comparisonBeforeCheckin = await fx.app.inject({
+      method: "GET",
+      url: `/order-lines/${orderLineId}/condition-reports`,
+      headers: fx.merchantHeader,
+    });
+    expect(comparisonBeforeCheckin.statusCode).toBe(200);
+    const beforeCheckin = comparisonBeforeCheckin.json() as {
+      checkoutReport: { conditionGrade: string; media: { sha256: string }[] } | null;
+      checkinReport: unknown;
+      delta: unknown;
+    };
+    expect(beforeCheckin.checkoutReport?.conditionGrade).toBe("GOOD");
+    expect(beforeCheckin.checkinReport).toBeNull();
+    expect(beforeCheckin.delta).toBeNull();
+
+    await fx.app.inject({
+      method: "POST",
+      url: `/order-lines/${orderLineId}/condition-reports/checkin`,
+      headers: fx.merchantHeader,
+      payload: { inventoryUnitId, conditionGrade: "GOOD" },
+    });
+
+    const comparisonAfterCheckin = await fx.app.inject({
+      method: "GET",
+      url: `/order-lines/${orderLineId}/condition-reports`,
+      headers: fx.merchantHeader,
+    });
+    const afterCheckin = comparisonAfterCheckin.json() as {
+      checkinReport: { conditionGrade: string } | null;
+      delta: { unchanged: boolean } | null;
+    };
+    expect(afterCheckin.checkinReport?.conditionGrade).toBe("GOOD");
+    expect(afterCheckin.delta).toMatchObject({ unchanged: true });
+  });
+});

@@ -261,6 +261,8 @@ export {
   type RecordCheckoutInput,
   type RecordCheckinInput,
   type RecordCheckinResult,
+  type ConditionReportWithMedia,
+  type ConditionReportComparison,
 } from "./services/ConditionReportService.js";
 export {
   runMediaRetentionSqlite,

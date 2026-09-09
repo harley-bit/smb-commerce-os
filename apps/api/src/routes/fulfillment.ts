@@ -12,6 +12,7 @@ import {
   FulfillmentEventRepository,
   FulfillmentEventService,
   MediaTooLargeError,
+  MissingCheckoutBaselineError,
   MissingCheckoutConditionReportError,
   MissingFulfillmentNoteError,
   OrderLineNotFoundError,
@@ -50,7 +51,7 @@ function createFulfillmentServiceFactory(
       const conditionReportRepo = new ConditionReportRepository(connection);
       const conditionMediaRepo = new ConditionMediaRepository(connection);
       return {
-        conditionReports: new ConditionReportService(conditionReportRepo, orderLines),
+        conditionReports: new ConditionReportService(conditionReportRepo, orderLines, conditionMediaRepo),
         mediaUpload: new ConditionMediaUploadService(conditionReportRepo, mediaUploadProvider),
         mediaConfirm: new ConditionMediaConfirmService(conditionReportRepo, conditionMediaRepo),
         fulfillmentEvents: new FulfillmentEventService(
@@ -269,6 +270,143 @@ export function registerFulfillmentRoutes(
         }
         if (error instanceof IllegalReservationTransitionError) {
           return sendProblem(request, reply, 409, problemType("conflict"), "Conflict", error.message);
+        }
+        throw error;
+      }
+    },
+  );
+
+  /**
+   * `docs/cards/D117.md` — the CHECKIN half of the condition-report trail
+   * (`ConditionReportService.recordCheckin`, D075) gets its HTTP surface,
+   * mirroring `POST .../condition-reports/checkout` above. The card's
+   * acceptance criterion ("grade delta surfaced") is answered by
+   * `recordCheckin`'s own response shape, which already carries the
+   * checkout baseline, the new checkin report, and the computed delta in
+   * one payload — no separate round-trip needed to show the comparison
+   * right after submission.
+   */
+  app.post<{ Params: { orderLineId: string }; Body: unknown }>(
+    "/order-lines/:orderLineId/condition-reports/checkin",
+    { preHandler: app.authenticate },
+    async (request, reply) => {
+      const body = (request.body ?? {}) as {
+        inventoryUnitId?: unknown;
+        conditionGrade?: unknown;
+        notes?: unknown;
+      };
+      if (typeof body.inventoryUnitId !== "string" || body.inventoryUnitId.length === 0) {
+        return sendProblem(request, reply, 400, problemType("bad-request"), "Bad Request", "inventoryUnitId is required.");
+      }
+      if (typeof body.conditionGrade !== "string" || body.conditionGrade.length === 0) {
+        return sendProblem(request, reply, 400, problemType("bad-request"), "Bad Request", "conditionGrade is required.");
+      }
+
+      const { conditionReports } = await getServices();
+      try {
+        const result = conditionReports.recordCheckin(request.auth!.tenant, request.auth!.role, {
+          orderLineId: request.params.orderLineId,
+          inventoryUnitId: body.inventoryUnitId,
+          conditionGrade: body.conditionGrade,
+          notes: typeof body.notes === "string" ? body.notes : null,
+          createdBy: request.auth!.identity.userId,
+          createdAt: new Date().toISOString(),
+        });
+        return reply.code(201).send(result);
+      } catch (error) {
+        if (error instanceof ForbiddenActionError) {
+          return sendProblem(request, reply, 403, problemType("forbidden"), "Forbidden", error.message);
+        }
+        if (error instanceof MissingCheckoutBaselineError) {
+          return sendProblem(
+            request,
+            reply,
+            409,
+            problemType("conflict"),
+            "Conflict",
+            "A CHECKOUT condition report is required before a CHECKIN can be recorded for this order line.",
+          );
+        }
+        throw error;
+      }
+    },
+  );
+
+  /**
+   * `docs/cards/D117.md` acceptance criterion ("unit returns to
+   * availability") — `FulfillmentEventService.recordReturn` (D070/D071)
+   * already drives the linked reservation to `RETURNED`, which
+   * `ReservationRepository`'s `blockingStatePredicate` (`docs/design/03`)
+   * excludes from every blocking-availability query, so the unit is free
+   * to be reserved again the instant this call succeeds — nothing further
+   * to do here beyond exposing the existing service method as HTTP.
+   */
+  app.post<{ Params: { orderLineId: string }; Body: unknown }>(
+    "/order-lines/:orderLineId/return",
+    { preHandler: app.authenticate },
+    async (request, reply) => {
+      const body = (request.body ?? {}) as { note?: unknown; occurredAt?: unknown };
+      const note = typeof body.note === "string" ? body.note : "";
+      const occurredAt = typeof body.occurredAt === "string" ? body.occurredAt : new Date().toISOString();
+
+      const { fulfillmentEvents } = await getServices();
+      try {
+        const id = fulfillmentEvents.recordReturn(request.auth!.tenant, request.auth!.role, {
+          orderLineId: request.params.orderLineId,
+          occurredAt,
+          actorUserId: request.auth!.identity.userId,
+          note,
+        });
+        return reply.code(201).send({ id });
+      } catch (error) {
+        if (error instanceof ForbiddenActionError) {
+          return sendProblem(request, reply, 403, problemType("forbidden"), "Forbidden", error.message);
+        }
+        if (error instanceof OrderLineNotFoundError) {
+          return sendProblem(request, reply, 404, problemType("not-found"), "Not Found", "No order line with that id.");
+        }
+        if (error instanceof MissingFulfillmentNoteError) {
+          return sendProblem(request, reply, 400, problemType("bad-request"), "Bad Request", error.message);
+        }
+        if (error instanceof IllegalReservationTransitionError) {
+          return sendProblem(request, reply, 409, problemType("conflict"), "Conflict", error.message);
+        }
+        throw error;
+      }
+    },
+  );
+
+  /**
+   * `docs/cards/D117.md` — the check-in dashboard's read model
+   * (`ConditionReportService.getComparison`): whatever CHECKOUT/CHECKIN
+   * reports exist so far, each with its confirmed media (this card's
+   * security check — "media integrity hash verified on display" — is
+   * answered by serving each item's `sha256` straight from
+   * `condition_media`, the row `ConditionMediaConfirmService` only ever
+   * writes after independently recomputing and verifying that hash against
+   * the uploaded bytes, D074 — never a value trusted from a request at
+   * read time), plus the grade delta once both halves are on file. Gated
+   * on `bookings:view`, not `:manage` — this is a read, open to every
+   * merchant role including `READ_ONLY`.
+   */
+  app.get<{ Params: { orderLineId: string } }>(
+    "/order-lines/:orderLineId/condition-reports",
+    { preHandler: app.authenticate },
+    async (request, reply) => {
+      const { conditionReports } = await getServices();
+      try {
+        const comparison = conditionReports.getComparison(
+          request.auth!.tenant,
+          request.auth!.role,
+          request.params.orderLineId,
+        );
+        return reply.code(200).send(comparison);
+      } catch (error) {
+        // No `ForbiddenActionError` branch here: `bookings:view` (this route's
+        // gate, inside `getComparison`) is granted to every merchant role,
+        // including `READ_ONLY` — there is no role this can reject.
+        if (error instanceof OrderLineNotFoundError) {
+          return sendProblem(request, reply, 404, problemType("not-found"), "Not Found", "No order line with that id.");
         }
         throw error;
       }

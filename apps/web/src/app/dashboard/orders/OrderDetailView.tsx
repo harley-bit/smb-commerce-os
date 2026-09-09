@@ -128,7 +128,11 @@ export function OrderDetailView({ merchantId, orderId }: OrderDetailViewProps) {
               <td>{line.endsAt ?? "—"}</td>
               <td>
                 {line.mode === "RENTAL" && (
-                  <Link href={`/dashboard/rentals/${line.id}/checkout?merchantId=${merchantId}`}>Check out</Link>
+                  <>
+                    <Link href={`/dashboard/rentals/${line.id}/checkout?merchantId=${merchantId}`}>Check out</Link>
+                    {" · "}
+                    <Link href={`/dashboard/rentals/${line.id}/checkin?merchantId=${merchantId}`}>Check in</Link>
+                  </>
                 )}
               </td>
             </tr>

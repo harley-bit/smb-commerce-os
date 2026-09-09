@@ -5,6 +5,7 @@ import {
   type ConditionReport,
   type ConditionReportRepository,
 } from "../repositories/ConditionReportRepository.js";
+import type { ConditionMediaRecord, ConditionMediaRepository } from "../repositories/ConditionMediaRepository.js";
 import { OrderLineNotFoundError } from "./FulfillmentEventService.js";
 
 export interface RecordCheckoutInput {
@@ -30,6 +31,23 @@ export interface RecordCheckinResult {
   checkoutReport: ConditionReport;
   checkinReport: ConditionReport;
   delta: ConditionGradeDelta;
+}
+
+export interface ConditionReportWithMedia extends ConditionReport {
+  media: ConditionMediaRecord[];
+}
+
+/**
+ * `docs/cards/D117.md` — the check-in dashboard's "side-by-side comparison"
+ * read model: whatever half of the CHECKOUT/CHECKIN pair exists so far,
+ * each with its confirmed media (never raw bytes — `condition_media` never
+ * stored any, only the server-verified `sha256` from D074's confirm step),
+ * plus the grade delta once both halves are on file.
+ */
+export interface ConditionReportComparison {
+  checkoutReport: ConditionReportWithMedia | null;
+  checkinReport: ConditionReportWithMedia | null;
+  delta: ConditionGradeDelta | null;
 }
 
 /**
@@ -63,6 +81,7 @@ export class ConditionReportService {
   constructor(
     private readonly conditionReports: ConditionReportRepository,
     private readonly orderLines: OrderRepository,
+    private readonly conditionMedia: ConditionMediaRepository,
   ) {}
 
   /**
@@ -135,5 +154,41 @@ export class ConditionReportService {
     const delta = computeConditionGradeDelta(checkoutReport.conditionGrade, checkinReport.conditionGrade);
 
     return { checkinReportId, checkoutReport, checkinReport, delta };
+  }
+
+  /**
+   * `docs/cards/D117.md` acceptance criterion — the check-in dashboard's
+   * side-by-side comparison, gated on `bookings:view` (not `:manage`) since
+   * this is a read: every merchant role, including `READ_ONLY`, can look at
+   * a rental's condition-report trail even though only staff can write to
+   * it. Tenant isolation matches every other method here — an order line
+   * that doesn't resolve under the caller's `ctx` throws
+   * `OrderLineNotFoundError` before any report or media row is read.
+   */
+  getComparison(
+    ctx: TenantContext,
+    actingRole: MerchantUserRole,
+    orderLineId: string,
+  ): ConditionReportComparison {
+    assertCan({ role: actingRole }, "bookings:view");
+
+    const line = this.orderLines.findLineById(ctx, orderLineId);
+    if (!line) {
+      throw new OrderLineNotFoundError(orderLineId);
+    }
+
+    const reports = this.conditionReports.listByOrderLine(ctx, orderLineId);
+    const checkoutReport = reports.find((report) => report.phase === "CHECKOUT") ?? null;
+    const checkinReport = reports.find((report) => report.phase === "CHECKIN") ?? null;
+
+    const withMedia = (report: ConditionReport | null): ConditionReportWithMedia | null =>
+      report ? { ...report, media: this.conditionMedia.listByConditionReport(ctx, report.id) } : null;
+
+    const delta =
+      checkoutReport && checkinReport
+        ? computeConditionGradeDelta(checkoutReport.conditionGrade, checkinReport.conditionGrade)
+        : null;
+
+    return { checkoutReport: withMedia(checkoutReport), checkinReport: withMedia(checkinReport), delta };
   }
 }
