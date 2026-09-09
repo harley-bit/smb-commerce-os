@@ -1,4 +1,4 @@
-import { useReducer } from "react";
+import { useReducer, useState } from "react";
 import { StatusBar } from "expo-status-bar";
 import { StyleSheet, View } from "react-native";
 import { parseMerchantProfile } from "./src/shell/parseMerchantProfile";
@@ -7,6 +7,9 @@ import { HomeScreen } from "./src/merchant/HomeScreen";
 import { ListingDetailScreen } from "./src/merchant/ListingDetailScreen";
 import { PlaceholderScreen } from "./src/navigation/PlaceholderScreen";
 import { initialNavigationState, navigationReducer } from "./src/navigation/navigationState";
+import { CartScreen } from "./src/cart/CartScreen";
+import { addLine, createEmptyCart, removeLine, type CartState } from "./src/cart/cartStore";
+import { expoCartLineGenerators } from "./src/cart/expoIdGenerators";
 
 /**
  * D137's app shell: no real network call yet (that's the mobile customer
@@ -29,6 +32,7 @@ const homeSlug = placeholderProfile.ok ? placeholderProfile.profile.slug : "smb-
  */
 export default function App() {
   const [state, dispatch] = useReducer(navigationReducer, undefined, initialNavigationState);
+  const [cart, setCart] = useState<CartState>(createEmptyCart);
 
   if (state.current.name === "SignIn") {
     return (
@@ -64,9 +68,63 @@ export default function App() {
           listingSlug={listingSlug}
           canGoBack={state.stack.length > 0}
           onGoBack={() => dispatch({ type: "goBack" })}
-          onBuy={() => dispatch({ type: "push", screen: { name: "Checkout", params: { slug } } })}
+          onBuy={(variant) => {
+            setCart((current) =>
+              addLine(
+                current,
+                {
+                  mode: "PRODUCT",
+                  slug,
+                  listingSlug,
+                  variantId: variant.id,
+                  name: variant.name,
+                  unitPriceMinor: variant.priceMinor,
+                  currency: variant.currency,
+                },
+                expoCartLineGenerators,
+                new Date(),
+              ),
+            );
+            dispatch({ type: "push", screen: { name: "Cart", params: { slug } } });
+          }}
           onBook={() => dispatch({ type: "push", screen: { name: "Checkout", params: { slug } } })}
-          onReserveRental={() => dispatch({ type: "push", screen: { name: "Checkout", params: { slug } } })}
+          onReserveRental={(variant, startDate, endDate) => {
+            setCart((current) =>
+              addLine(
+                current,
+                {
+                  mode: "RENTAL",
+                  slug,
+                  listingSlug,
+                  variantId: variant.id,
+                  name: variant.name,
+                  unitPriceMinor: variant.priceMinor,
+                  currency: variant.currency,
+                  startsAt: `${startDate}T00:00:00.000Z`,
+                  endsAt: `${endDate}T00:00:00.000Z`,
+                },
+                expoCartLineGenerators,
+                new Date(),
+              ),
+            );
+            dispatch({ type: "push", screen: { name: "Cart", params: { slug } } });
+          }}
+        />
+        <StatusBar style="auto" />
+      </View>
+    );
+  }
+
+  if (state.current.name === "Cart") {
+    const { slug } = state.current.params;
+    return (
+      <View style={styles.container}>
+        <CartScreen
+          cart={cart}
+          canGoBack={state.stack.length > 0}
+          onGoBack={() => dispatch({ type: "goBack" })}
+          onRemoveLine={(lineId) => setCart((current) => removeLine(current, lineId))}
+          onCheckout={() => dispatch({ type: "push", screen: { name: "Checkout", params: { slug } } })}
         />
         <StatusBar style="auto" />
       </View>

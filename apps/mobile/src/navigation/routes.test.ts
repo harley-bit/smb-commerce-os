@@ -12,6 +12,12 @@ describe("toWebPath — mobile screens mirror apps/web/src/app/m/[slug]'s route 
     ).toBe("/m/corner-bike-shop/l/trail-bike");
   });
 
+  it("maps Cart onto the checkout route — no dedicated web cart page exists yet (D145)", () => {
+    expect(toWebPath({ name: "Cart", params: { slug: "corner-bike-shop" } })).toBe(
+      "/m/corner-bike-shop/checkout",
+    );
+  });
+
   it("maps Checkout to the checkout route", () => {
     expect(toWebPath({ name: "Checkout", params: { slug: "corner-bike-shop" } })).toBe(
       "/m/corner-bike-shop/checkout",
