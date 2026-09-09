@@ -38,6 +38,28 @@ export interface ResetTokenRecord {
   usedAt: string | null;
 }
 
+/** Mobile PKCE authorization code (`docs/cards/D138.md`) — stored by `SHA256(code)`, never the raw code. */
+export interface AuthorizationCodeRecord {
+  codeHash: string;
+  userId: string;
+  codeChallenge: string;
+  codeChallengeMethod: "S256";
+  createdAt: string;
+  expiresAt: string;
+  usedAt: string | null;
+}
+
+/** Mobile refresh token (`docs/cards/D138.md`) — stored by `SHA256(token)`, never the raw token. */
+export interface RefreshTokenRecord {
+  tokenHash: string;
+  userId: string;
+  createdAt: string;
+  expiresAt: string;
+  revokedAt: string | null;
+  ip: string;
+  userAgent: string;
+}
+
 export interface UserRepository {
   findByEmail(email: string): Promise<UserRecord | null>;
   findById(id: string): Promise<UserRecord | null>;
@@ -57,6 +79,18 @@ export interface ResetTokenRepository {
   create(record: ResetTokenRecord): Promise<void>;
   findByTokenHash(tokenHash: string): Promise<ResetTokenRecord | null>;
   markUsed(tokenHash: string, usedAt: string): Promise<void>;
+}
+
+export interface AuthorizationCodeRepository {
+  create(record: AuthorizationCodeRecord): Promise<void>;
+  findByCodeHash(codeHash: string): Promise<AuthorizationCodeRecord | null>;
+  markUsed(codeHash: string, usedAt: string): Promise<void>;
+}
+
+export interface RefreshTokenRepository {
+  create(record: RefreshTokenRecord): Promise<void>;
+  findByTokenHash(tokenHash: string): Promise<RefreshTokenRecord | null>;
+  revoke(tokenHash: string, revokedAt: string): Promise<void>;
 }
 
 export class InMemoryUserRepository implements UserRepository {
@@ -139,5 +173,45 @@ export class InMemoryResetTokenRepository implements ResetTokenRepository {
       return;
     }
     this.byHash.set(tokenHash, { ...existing, usedAt });
+  }
+}
+
+export class InMemoryAuthorizationCodeRepository implements AuthorizationCodeRepository {
+  private readonly byHash = new Map<string, AuthorizationCodeRecord>();
+
+  async create(record: AuthorizationCodeRecord): Promise<void> {
+    this.byHash.set(record.codeHash, record);
+  }
+
+  async findByCodeHash(codeHash: string): Promise<AuthorizationCodeRecord | null> {
+    return this.byHash.get(codeHash) ?? null;
+  }
+
+  async markUsed(codeHash: string, usedAt: string): Promise<void> {
+    const existing = this.byHash.get(codeHash);
+    if (!existing) {
+      return;
+    }
+    this.byHash.set(codeHash, { ...existing, usedAt });
+  }
+}
+
+export class InMemoryRefreshTokenRepository implements RefreshTokenRepository {
+  private readonly byHash = new Map<string, RefreshTokenRecord>();
+
+  async create(record: RefreshTokenRecord): Promise<void> {
+    this.byHash.set(record.tokenHash, record);
+  }
+
+  async findByTokenHash(tokenHash: string): Promise<RefreshTokenRecord | null> {
+    return this.byHash.get(tokenHash) ?? null;
+  }
+
+  async revoke(tokenHash: string, revokedAt: string): Promise<void> {
+    const existing = this.byHash.get(tokenHash);
+    if (!existing) {
+      return;
+    }
+    this.byHash.set(tokenHash, { ...existing, revokedAt });
   }
 }

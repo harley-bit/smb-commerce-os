@@ -14,8 +14,8 @@ import {
   type MerchantUserRole,
 } from "@smb-os/db";
 import { problemType, sendProblem } from "../problemDetails.js";
+import { extractSessionToken } from "./sessionToken.js";
 
-const SESSION_COOKIE = "session";
 const MERCHANT_HEADER = "x-merchant-id";
 
 /**
@@ -106,7 +106,7 @@ export function createAuthenticateHandler(
   membership: MerchantMembershipResolver,
 ): (request: FastifyRequest, reply: FastifyReply) => Promise<void> {
   return async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
-    const token = request.cookies[SESSION_COOKIE];
+    const token = extractSessionToken(request);
     const identity = token ? await authProvider.verifySession(token) : null;
     if (!identity) {
       sendProblem(request, reply, 401, problemType("unauthorized"), "Unauthorized", "A valid session is required.");

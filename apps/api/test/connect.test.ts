@@ -56,6 +56,10 @@ async function setupFixture(role: MerchantUserRole, businessCountry: string | nu
     completePasswordReset: () => Promise.reject(new Error("not implemented")),
     enrollMfa: () => Promise.reject(new Error("not implemented")),
     confirmMfaEnrollment: () => Promise.reject(new Error("not implemented")),
+    createAuthorizationCode: () => Promise.reject(new Error("not implemented")),
+    exchangeAuthorizationCode: () => Promise.reject(new Error("not implemented")),
+    refreshMobileSession: () => Promise.reject(new Error("not implemented")),
+    revokeMobileSession: () => Promise.resolve(),
   };
 
   const provider = new SimulatedConnectAccountProvider();

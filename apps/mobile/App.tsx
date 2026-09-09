@@ -1,6 +1,7 @@
 import { StatusBar } from "expo-status-bar";
 import { StyleSheet, Text, View } from "react-native";
 import { parseMerchantProfile } from "./src/shell/parseMerchantProfile";
+import { SignInScreen } from "./src/auth/SignInScreen";
 
 /**
  * D137's app shell: no real network call yet (that's the mobile customer
@@ -20,6 +21,9 @@ export default function App() {
         {placeholderProfile.ok ? placeholderProfile.profile.name : "Unable to load merchant"}
       </Text>
       <Text style={styles.subtitle}>Mobile app shell — Phase 8</Text>
+      <View style={styles.authSection}>
+        <SignInScreen />
+      </View>
       <StatusBar style="auto" />
     </View>
   );
@@ -39,5 +43,9 @@ const styles = StyleSheet.create({
   subtitle: {
     marginTop: 8,
     color: "#666",
+  },
+  authSection: {
+    width: "100%",
+    marginTop: 24,
   },
 });

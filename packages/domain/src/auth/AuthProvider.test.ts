@@ -2,15 +2,20 @@ import { describe, expect, it } from "vitest";
 import {
   AccountLockedError,
   EmailAlreadyRegisteredError,
+  InvalidAuthorizationCodeError,
   InvalidCredentialsError,
   InvalidMfaCodeError,
+  InvalidRefreshTokenError,
   InvalidResetTokenError,
   MfaCodeRequiredError,
   MfaEnrollmentRequiredError,
+  PkceVerificationFailedError,
   type AuthIdentity,
+  type AuthorizationCodeGrant,
   type AuthProvider,
   type AuthResult,
   type MfaEnrollment,
+  type MobileTokenPair,
   type Session,
 } from "./AuthProvider.js";
 
@@ -31,11 +36,32 @@ describe("AuthProvider domain contract", () => {
       completePasswordReset: async (): Promise<void> => undefined,
       enrollMfa: async (): Promise<MfaEnrollment> => ({ secret: "s1", otpauthUrl: "otpauth://totp/x" }),
       confirmMfaEnrollment: async (): Promise<void> => undefined,
+      createAuthorizationCode: async (): Promise<AuthorizationCodeGrant> => ({
+        code: "c1",
+        expiresAt: new Date(1).toISOString(),
+      }),
+      exchangeAuthorizationCode: async (): Promise<MobileTokenPair> => ({
+        accessToken: "a1",
+        accessTokenExpiresAt: new Date(1).toISOString(),
+        refreshToken: "r1",
+        refreshTokenExpiresAt: new Date(2).toISOString(),
+      }),
+      refreshMobileSession: async (): Promise<MobileTokenPair> => ({
+        accessToken: "a2",
+        accessTokenExpiresAt: new Date(1).toISOString(),
+        refreshToken: "r2",
+        refreshTokenExpiresAt: new Date(2).toISOString(),
+      }),
+      revokeMobileSession: async (): Promise<void> => undefined,
     };
 
     expect(typeof stubProvider.authenticate).toBe("function");
     expect(typeof stubProvider.enrollMfa).toBe("function");
     expect(typeof stubProvider.confirmMfaEnrollment).toBe("function");
+    expect(typeof stubProvider.createAuthorizationCode).toBe("function");
+    expect(typeof stubProvider.exchangeAuthorizationCode).toBe("function");
+    expect(typeof stubProvider.refreshMobileSession).toBe("function");
+    expect(typeof stubProvider.revokeMobileSession).toBe("function");
   });
 
   it("exposes distinct, named error classes so callers can branch on failure mode", () => {
@@ -46,6 +72,9 @@ describe("AuthProvider domain contract", () => {
     expect(new MfaEnrollmentRequiredError().name).toBe("MfaEnrollmentRequiredError");
     expect(new MfaCodeRequiredError().name).toBe("MfaCodeRequiredError");
     expect(new InvalidMfaCodeError().name).toBe("InvalidMfaCodeError");
+    expect(new InvalidAuthorizationCodeError().name).toBe("InvalidAuthorizationCodeError");
+    expect(new PkceVerificationFailedError().name).toBe("PkceVerificationFailedError");
+    expect(new InvalidRefreshTokenError().name).toBe("InvalidRefreshTokenError");
   });
 
   it("never puts a password field on the error or result types (compile-time check)", () => {

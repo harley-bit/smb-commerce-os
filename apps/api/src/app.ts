@@ -45,6 +45,7 @@ import { registerVariantRoutes } from "./routes/variants.js";
 import { registerInventoryUnitRoutes } from "./routes/inventoryUnits.js";
 import { registerMerchantRoutes } from "./routes/merchants.js";
 import { registerWebhookRoutes } from "./routes/webhooks.js";
+import { registerMobileAuthRoutes } from "./routes/mobileAuth.js";
 import {
   AccountLockedError,
   EmailAlreadyRegisteredError,
@@ -67,7 +68,10 @@ import {
 // every route handler in this file depends only on the `AuthProvider`
 // interface from `@smb-os/domain`.
 import { NativeAuthProvider, type ResetTokenNotifier } from "./auth/NativeAuthProvider.js";
+import { extractSessionToken } from "./auth/sessionToken.js";
 import {
+  InMemoryAuthorizationCodeRepository,
+  InMemoryRefreshTokenRepository,
   InMemoryResetTokenRepository,
   InMemorySessionRepository,
   InMemoryUserRepository,
@@ -80,6 +84,8 @@ export interface BuildAppOptions {
   allowedOrigins?: readonly string[];
   loginRateLimit?: { limit: number; windowMs: number };
   resetRateLimit?: { limit: number; windowMs: number };
+  /** `docs/cards/D138.md` — rate limit for `POST /auth/mobile/authorize` (takes credentials, same posture as `/auth/login`). */
+  mobileAuthRateLimit?: { limit: number; windowMs: number };
   availabilityRateLimit?: { limit: number; windowMs: number };
   /** `docs/cards/D121.md` — rate limit for the public `GET /v1/m/{slug}` and `GET /v1/m/{slug}/listings` storefront routes. */
   publicCatalogRateLimit?: { limit: number; windowMs: number };
@@ -216,6 +222,9 @@ const LOG_REDACT_PATHS = [
   "req.body.token",
   "req.body.mfaCode",
   "req.body.code",
+  "req.body.codeVerifier",
+  "req.body.codeChallenge",
+  "req.body.refreshToken",
   "res.headers['set-cookie']",
 ];
 
@@ -226,6 +235,8 @@ export function createDefaultAuthProvider(onResetTokenIssued?: ResetTokenNotifie
     new InMemorySessionRepository(),
     new InMemoryResetTokenRepository(),
     onResetTokenIssued,
+    new InMemoryAuthorizationCodeRepository(),
+    new InMemoryRefreshTokenRepository(),
   );
 }
 
@@ -342,6 +353,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     webBaseUrl: options.webBaseUrl ?? "http://localhost:3000",
   });
   registerTeamRoutes(app, connection, options.onRoleChanged ?? (() => undefined));
+  registerMobileAuthRoutes(app, authProvider, { rateLimit: options.mobileAuthRateLimit });
 
   app.addHook("onSend", async (request, reply, payload) => {
     void reply.header(REQUEST_ID_HEADER, request.id);
@@ -517,7 +529,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   });
 
   app.get("/auth/me", async (request, reply) => {
-    const token = request.cookies[SESSION_COOKIE];
+    const token = extractSessionToken(request);
     const context = token ? await authProvider.verifySession(token) : null;
     if (!context) {
       return reply.code(401).send({ error: "Not authenticated." });
