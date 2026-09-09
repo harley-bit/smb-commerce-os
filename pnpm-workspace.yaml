@@ -9,13 +9,19 @@ overrides:
   vite: "^6.4.3"
   postcss: "^8.5.18"
 minimumReleaseAgeExclude:
-  - "@typescript-eslint/eslint-plugin@8.70.0"
-  - "@typescript-eslint/parser@8.70.0"
-  - "@typescript-eslint/project-service@8.70.0"
-  - "@typescript-eslint/scope-manager@8.70.0"
-  - "@typescript-eslint/tsconfig-utils@8.70.0"
-  - "@typescript-eslint/type-utils@8.70.0"
-  - "@typescript-eslint/types@8.70.0"
-  - "@typescript-eslint/typescript-estree@8.70.0"
-  - "@typescript-eslint/utils@8.70.0"
-  - "@typescript-eslint/visitor-keys@8.70.0"
+  - '@typescript-eslint/eslint-plugin@8.70.0'
+  - '@typescript-eslint/parser@8.70.0'
+  - '@typescript-eslint/project-service@8.70.0'
+  - '@typescript-eslint/scope-manager@8.70.0'
+  - '@typescript-eslint/tsconfig-utils@8.70.0'
+  - '@typescript-eslint/type-utils@8.70.0'
+  - '@typescript-eslint/types@8.70.0'
+  - '@typescript-eslint/typescript-estree@8.70.0'
+  - '@typescript-eslint/utils@8.70.0'
+  - '@typescript-eslint/visitor-keys@8.70.0'
+  - '@expo/cli@57.0.23'
+  - '@expo/metro-file-map@57.0.3'
+  - babel-preset-expo@57.0.11
+  - expo-modules-core@57.0.17
+  - expo-modules-jsi@57.1.0
+  - expo@57.0.21
