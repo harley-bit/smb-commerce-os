@@ -12,6 +12,7 @@ import { CartScreen } from "./src/cart/CartScreen";
 import { addLine, createEmptyCart, removeLine, type CartState } from "./src/cart/cartStore";
 import { expoCartLineGenerators } from "./src/cart/expoIdGenerators";
 import { PaymentScreen } from "./src/payments/PaymentScreen";
+import { AccountOrdersScreen } from "./src/account/AccountOrdersScreen";
 import { API_BASE_URL } from "./src/auth/apiConfig";
 
 /**
@@ -173,6 +174,16 @@ export default function App() {
           onGoBack={() => dispatch({ type: "goBack" })}
           onPaid={() => dispatch({ type: "push", screen: { name: "OrderConfirmation", params: { slug, orderId } } })}
         />
+        <StatusBar style="auto" />
+      </View>
+    );
+  }
+
+  if (state.current.name === "AccountOrders") {
+    const { slug } = state.current.params;
+    return (
+      <View style={styles.container}>
+        <AccountOrdersScreen slug={slug} canGoBack={state.stack.length > 0} onGoBack={() => dispatch({ type: "goBack" })} />
         <StatusBar style="auto" />
       </View>
     );

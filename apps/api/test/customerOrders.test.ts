@@ -145,6 +145,22 @@ describe("GET /v1/m/:slug/account/orders and .../account/orders/:orderId", () =>
     expect(body.past[0]!.totalMinor).toBe(1200);
   });
 
+  it("D147: accepts an Authorization: Bearer session token, not just the session cookie — the only form apps/mobile has to present, since it has no cookie jar", async () => {
+    const fx = await setupFixture();
+    const merchantId = merchantIdForSlug(fx.connection, fx.slug);
+    seedProductOnlyOrder(fx.connection, merchantId, fx.customerUserId);
+
+    const res = await fx.app.inject({
+      method: "GET",
+      url: `/v1/m/${fx.slug}/account/orders`,
+      headers: { authorization: "Bearer customer-token" },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { upcoming: unknown[]; past: Array<{ totalMinor: number }> };
+    expect(body.past).toHaveLength(1);
+  });
+
   it("rejects an unauthenticated request to either route", async () => {
     const fx = await setupFixture();
 

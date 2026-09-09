@@ -21,8 +21,7 @@ import {
   type Connection,
 } from "@smb-os/db";
 import { problemType, sendProblem } from "../problemDetails.js";
-
-const SESSION_COOKIE = "session";
+import { extractSessionToken } from "../auth/sessionToken.js";
 
 interface CustomerOrderServices {
   merchants: MerchantRepository;
@@ -98,7 +97,7 @@ export function registerCustomerOrderRoutes(
   const getServices = createServiceFactory(connection, refundProvider, depositHoldProvider, cancellationPolicySet);
 
   app.get<{ Params: { slug: string } }>("/v1/m/:slug/account/orders", async (request, reply) => {
-    const token = request.cookies[SESSION_COOKIE];
+    const token = extractSessionToken(request);
     const identity = token ? await authProvider.verifySession(token) : null;
     if (!identity) {
       return sendProblem(
@@ -125,7 +124,7 @@ export function registerCustomerOrderRoutes(
   app.get<{ Params: { slug: string; orderId: string } }>(
     "/v1/m/:slug/account/orders/:orderId",
     async (request, reply) => {
-      const token = request.cookies[SESSION_COOKIE];
+      const token = extractSessionToken(request);
       const identity = token ? await authProvider.verifySession(token) : null;
       if (!identity) {
         return sendProblem(
@@ -165,7 +164,7 @@ export function registerCustomerOrderRoutes(
   app.post<{ Params: { slug: string; orderId: string } }>(
     "/v1/m/:slug/account/orders/:orderId/cancel",
     async (request, reply) => {
-      const token = request.cookies[SESSION_COOKIE];
+      const token = extractSessionToken(request);
       const identity = token ? await authProvider.verifySession(token) : null;
       if (!identity) {
         return sendProblem(
