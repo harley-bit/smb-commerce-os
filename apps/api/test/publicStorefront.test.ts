@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   InventoryMovementRepository,
+  InventoryUnitRepository,
   ListingRepository,
   ListingResourceRepository,
   ListingService,
   LocationRepository,
   MerchantRepository,
+  ReservationRepository,
   ResourceRepository,
   UserRepository,
   VariantRepository,
@@ -228,13 +230,16 @@ describe("GET /v1/m/:slug/listings/:listingSlug", () => {
     expect(res.statusCode).toBe(404);
   });
 
-  it("returns 404 for a RENTAL listing — D123 covers SERVICE, D124 covers RENTAL", async () => {
+  it("returns 200 with an empty variants array for a RENTAL listing with no variants — D124 covers RENTAL", async () => {
     const fx = await setupProductDetailFixture();
     const app = buildApp({ connection: fx.connection });
 
     const res = await app.inject({ method: "GET", url: `/v1/m/${fx.slug}/listings/camping-tent` });
 
-    expect(res.statusCode).toBe(404);
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { mode: string; variants: unknown[] };
+    expect(body.mode).toBe("RENTAL");
+    expect(body.variants).toEqual([]);
   });
 
   it("rate limits repeated requests from the same IP", async () => {
@@ -348,6 +353,217 @@ describe("GET /v1/m/:slug/listings/:listingSlug — SERVICE", () => {
     const res = await app.inject({ method: "GET", url: `/v1/m/${fx.slug}/listings/unfinished-consult` });
 
     expect(res.statusCode).toBe(404);
+  });
+});
+
+interface RentalDetailFixture {
+  connection: Connection;
+  slug: string;
+  merchantId: string;
+  variantId: string;
+  unit1: string;
+  unit2: string;
+}
+
+async function setupRentalDetailFixture(): Promise<RentalDetailFixture> {
+  const connection = createConnection(":memory:");
+  await runSqliteMigrations(connection);
+
+  const merchants = new MerchantRepository(connection);
+  const ctx = createTenantContext(generateUuidV7());
+  const slug = `acme-${generateUuidV7()}`;
+  merchants.create(ctx, {
+    name: "Acme",
+    slug,
+    status: "ACTIVE",
+    defaultCurrency: "USD",
+    createdAt: CREATED_AT,
+  });
+
+  const listings = new ListingService(new ListingRepository(connection));
+  const listingId = listings.create(ctx, "OWNER", {
+    mode: "RENTAL",
+    name: "Camping Tent",
+    slug: "camping-tent",
+    status: "PUBLISHED",
+    createdAt: CREATED_AT,
+  });
+  listings.create(ctx, "OWNER", {
+    mode: "RENTAL",
+    name: "Unfinished Kayak",
+    slug: "unfinished-kayak",
+    status: "DRAFT",
+    createdAt: CREATED_AT,
+  });
+
+  const variants = new VariantService(new VariantRepository(connection));
+  const variantId = variants.create(ctx, "OWNER", {
+    listingId,
+    mode: "RENTAL",
+    sku: "TENT-4P",
+    name: "4-person tent",
+    priceMinor: 3500,
+    currency: "USD",
+    ratePeriod: "DAY",
+    depositMinor: 15000,
+    bufferMinutes: 60,
+  });
+
+  const locations = new LocationRepository(connection);
+  const locationId = locations.create(ctx, { name: "Main", timezone: "America/New_York" });
+
+  const inventoryUnits = new InventoryUnitRepository(connection);
+  const unit1 = inventoryUnits.create(ctx, {
+    variantId,
+    locationId,
+    unitCode: "TENT-001",
+    trackingMode: "SERIALIZED",
+  });
+  const unit2 = inventoryUnits.create(ctx, {
+    variantId,
+    locationId,
+    unitCode: "TENT-002",
+    trackingMode: "SERIALIZED",
+  });
+
+  return { connection, slug, merchantId: ctx.merchantId, variantId, unit1, unit2 };
+}
+
+describe("GET /v1/m/:slug/listings/:listingSlug — RENTAL", () => {
+  it("returns the rental detail with each variant's deposit and rate period — deposit disclosed before checkout", async () => {
+    const fx = await setupRentalDetailFixture();
+    const app = buildApp({ connection: fx.connection });
+
+    const res = await app.inject({ method: "GET", url: `/v1/m/${fx.slug}/listings/camping-tent` });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { mode: string; variants: Array<{ id: string; depositMinor: number; ratePeriod: string }> };
+    expect(body.mode).toBe("RENTAL");
+    expect(body.variants).toEqual([
+      expect.objectContaining({ id: fx.variantId, depositMinor: 15000, ratePeriod: "DAY" }),
+    ]);
+  });
+
+  it("never exposes merchantId, listingId, or any unit id/count on a rental variant — this card's security check", async () => {
+    const fx = await setupRentalDetailFixture();
+    const app = buildApp({ connection: fx.connection });
+
+    const res = await app.inject({ method: "GET", url: `/v1/m/${fx.slug}/listings/camping-tent` });
+    const body = res.json() as { variants: Array<Record<string, unknown>> };
+
+    for (const variant of body.variants) {
+      expect(variant).not.toHaveProperty("merchantId");
+      expect(variant).not.toHaveProperty("listingId");
+      expect(variant).not.toHaveProperty("unitsAvailable");
+      expect(variant).not.toHaveProperty("unitsTotal");
+    }
+    expect(JSON.stringify(body)).not.toContain(fx.unit1);
+    expect(JSON.stringify(body)).not.toContain(fx.unit2);
+  });
+
+  it("returns 404 for a DRAFT rental listing's slug", async () => {
+    const fx = await setupRentalDetailFixture();
+    const app = buildApp({ connection: fx.connection });
+
+    const res = await app.inject({ method: "GET", url: `/v1/m/${fx.slug}/listings/unfinished-kayak` });
+
+    expect(res.statusCode).toBe(404);
+  });
+});
+
+describe("GET /v1/m/:slug/listings/:listingSlug/rental-availability", () => {
+  it("reports available:true when a free unit exists for the requested range", async () => {
+    const fx = await setupRentalDetailFixture();
+    const app = buildApp({ connection: fx.connection });
+
+    const res = await app.inject({
+      method: "GET",
+      url: `/v1/m/${fx.slug}/listings/camping-tent/rental-availability?variantId=${fx.variantId}&from=2026-10-01T00:00:00.000Z&to=2026-10-03T00:00:00.000Z`,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ available: true });
+  });
+
+  it("reports available:false once every unit is blocked for the requested range — unavailable ranges blocked", async () => {
+    const fx = await setupRentalDetailFixture();
+    const reservations = new ReservationRepository(fx.connection);
+    const ctx = createTenantContext(fx.merchantId);
+    for (const unitId of [fx.unit1, fx.unit2]) {
+      reservations.createGuarded(
+        ctx,
+        {
+          subjectType: "INVENTORY_UNIT",
+          subjectId: unitId,
+          startsAt: "2026-10-01T00:00:00.000Z",
+          endsAt: "2026-10-03T00:00:00.000Z",
+          quantity: 1,
+          state: "HELD",
+          createdAt: CREATED_AT,
+          expiresAt: "2099-01-01T00:00:00.000Z",
+          idempotencyKey: `idem-${unitId}`,
+        },
+        1,
+      );
+    }
+    const app = buildApp({ connection: fx.connection });
+
+    const res = await app.inject({
+      method: "GET",
+      url: `/v1/m/${fx.slug}/listings/camping-tent/rental-availability?variantId=${fx.variantId}&from=2026-10-01T12:00:00.000Z&to=2026-10-02T12:00:00.000Z`,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ available: false });
+  });
+
+  it("never exposes which unit was checked or a reservation id — bare boolean only", async () => {
+    const fx = await setupRentalDetailFixture();
+    const app = buildApp({ connection: fx.connection });
+
+    const res = await app.inject({
+      method: "GET",
+      url: `/v1/m/${fx.slug}/listings/camping-tent/rental-availability?variantId=${fx.variantId}&from=2026-10-01T00:00:00.000Z&to=2026-10-03T00:00:00.000Z`,
+    });
+
+    expect(Object.keys(res.json() as object)).toEqual(["available"]);
+  });
+
+  it("returns 400 when a required query parameter is missing", async () => {
+    const fx = await setupRentalDetailFixture();
+    const app = buildApp({ connection: fx.connection });
+
+    const res = await app.inject({
+      method: "GET",
+      url: `/v1/m/${fx.slug}/listings/camping-tent/rental-availability?variantId=${fx.variantId}`,
+    });
+
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("returns 404 for an unknown merchant slug", async () => {
+    const fx = await setupRentalDetailFixture();
+    const app = buildApp({ connection: fx.connection });
+
+    const res = await app.inject({
+      method: "GET",
+      url: `/v1/m/no-such-merchant/listings/camping-tent/rental-availability?variantId=${fx.variantId}&from=2026-10-01T00:00:00.000Z&to=2026-10-03T00:00:00.000Z`,
+    });
+
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("rate limits repeated requests from the same IP at a tight budget", async () => {
+    const fx = await setupRentalDetailFixture();
+    const app = buildApp({ connection: fx.connection });
+    const url = `/v1/m/${fx.slug}/listings/camping-tent/rental-availability?variantId=${fx.variantId}&from=2026-10-01T00:00:00.000Z&to=2026-10-03T00:00:00.000Z`;
+
+    await app.inject({ method: "GET", url });
+    await app.inject({ method: "GET", url });
+    await app.inject({ method: "GET", url });
+    const res = await app.inject({ method: "GET", url });
+
+    expect(res.statusCode).toBe(429);
   });
 });
 

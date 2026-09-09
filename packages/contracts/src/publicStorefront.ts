@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { listingModeSchema } from "./listing.js";
+import { variantRatePeriodSchema } from "./variant.js";
 
 /**
  * `docs/design/06`'s public storefront surface (`GET /v1/m/{merchantSlug}`)
@@ -87,3 +88,50 @@ export const publicServiceDetailSchema = publicListingSchema.extend({
   resourceIds: z.array(z.string().min(1)),
 });
 export type PublicServiceDetail = z.infer<typeof publicServiceDetailSchema>;
+
+/**
+ * `docs/cards/D124.md`'s deposit-disclosure acceptance criterion, answered
+ * at the schema level: `depositMinor` is a required field on every rental
+ * variant a storefront visitor can see, not an optional add-on fetched
+ * later — there is no code path that renders a rental variant without it.
+ * No unit id/count/`inventory_units` data is exposed here (same posture as
+ * `publicVariantSchema`'s bucketed `stockStatus` for PRODUCT) — a rental
+ * listing's date-range availability is answered by a dedicated boolean
+ * endpoint (`rentalAvailabilityResponseSchema` below), never by exposing
+ * how many units exist.
+ */
+export const publicRentalVariantSchema = z.object({
+  id: z.string().min(1),
+  sku: z.string().min(1),
+  name: z.string().min(1),
+  priceMinor: z.number().int(),
+  currency: z.string().min(1),
+  ratePeriod: variantRatePeriodSchema.nullable(),
+  depositMinor: z.number().int().nullable(),
+});
+export type PublicRentalVariant = z.infer<typeof publicRentalVariantSchema>;
+
+/**
+ * `docs/cards/D124.md`'s deliverable — a rental listing plus its variants,
+ * each carrying the rate/deposit a storefront visitor needs to see before
+ * ever picking a date range.
+ */
+export const publicRentalDetailSchema = publicListingSchema.extend({
+  variants: z.array(publicRentalVariantSchema),
+});
+export type PublicRentalDetail = z.infer<typeof publicRentalDetailSchema>;
+
+/**
+ * `GET /v1/m/{slug}/listings/{listingSlug}/rental-availability`'s response
+ * — a bare boolean, computed the same way
+ * `RentalReservationService.createRentalReservation` narrows candidates
+ * (`packages/db/src/services/RentalReservationService.ts`): does at least
+ * one `AVAILABLE` unit for this variant have no blocking reservation over
+ * `[from, to)`. Never exposes unit ids, unit count, or which unit(s) are
+ * free — this card's "unavailable ranges blocked" acceptance criterion only
+ * needs a yes/no per candidate range.
+ */
+export const rentalAvailabilityResponseSchema = z.object({
+  available: z.boolean(),
+});
+export type RentalAvailabilityResponse = z.infer<typeof rentalAvailabilityResponseSchema>;

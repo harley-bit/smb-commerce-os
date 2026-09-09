@@ -106,14 +106,14 @@ describe("MerchantPageView", () => {
     expect(link).toHaveAttribute("href", `/m/${SLUG}/l/haircut`);
   });
 
-  it("does not link a rental listing — no detail page exists for it yet", async () => {
+  it("links a rental listing to its detail page, per D124", async () => {
     mockStorefront({
       listings: [{ id: "l-3", mode: "RENTAL", name: "Camping Tent", slug: "camping-tent", description: null }],
     });
 
     render(<MerchantPageView slug={SLUG} />);
 
-    await screen.findByText("Camping Tent");
-    expect(screen.queryByRole("link", { name: "Camping Tent" })).not.toBeInTheDocument();
+    const link = await screen.findByRole("link", { name: "Camping Tent" });
+    expect(link).toHaveAttribute("href", `/m/${SLUG}/l/camping-tent`);
   });
 });

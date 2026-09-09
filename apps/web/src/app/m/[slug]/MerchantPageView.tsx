@@ -83,11 +83,7 @@ export function MerchantPageView({ slug }: MerchantPageViewProps) {
               <ul>
                 {inMode.map((listing) => (
                   <li key={listing.id}>
-                    {listing.mode === "PRODUCT" || listing.mode === "SERVICE" ? (
-                      <Link href={`/m/${slug}/l/${listing.slug}`}>{listing.name}</Link>
-                    ) : (
-                      listing.name
-                    )}
+                    <Link href={`/m/${slug}/l/${listing.slug}`}>{listing.name}</Link>
                   </li>
                 ))}
               </ul>

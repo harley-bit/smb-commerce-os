@@ -2,10 +2,12 @@ import type { FastifyInstance } from "fastify";
 import { createTenantContext } from "@smb-os/domain";
 import {
   InventoryMovementRepository,
+  InventoryUnitRepository,
   ListingRepository,
   ListingResourceRepository,
   ListingService,
   MerchantRepository,
+  ReservationRepository,
   VariantRepository,
   VariantService,
   runSqliteMigrations,
@@ -18,6 +20,8 @@ import type {
   PublicListing,
   PublicMerchantProfile,
   PublicProductDetail,
+  PublicRentalDetail,
+  PublicRentalVariant,
   PublicServiceDetail,
   PublicVariant,
 } from "@smb-os/contracts";
@@ -32,6 +36,8 @@ interface PublicStorefrontServices {
   variants: VariantService;
   movements: InventoryMovementRepository;
   listingResources: ListingResourceRepository;
+  inventoryUnits: InventoryUnitRepository;
+  reservations: ReservationRepository;
 }
 
 /**
@@ -48,6 +54,8 @@ function createServiceFactory(connection: Connection): () => Promise<PublicStore
       variants: new VariantService(new VariantRepository(connection)),
       movements: new InventoryMovementRepository(connection),
       listingResources: new ListingResourceRepository(connection),
+      inventoryUnits: new InventoryUnitRepository(connection),
+      reservations: new ReservationRepository(connection),
     }));
     return ready;
   };
@@ -83,6 +91,27 @@ function toPublicVariant(variant: Variant, stock: number): PublicVariant {
   };
 }
 
+/**
+ * `docs/cards/D124.md`'s deposit-disclosure acceptance criterion: `depositMinor`
+ * is carried through unconditionally (whatever `VariantRepository` has —
+ * `null` if the merchant never set one) rather than defaulted or omitted, so
+ * a storefront visitor sees the real figure before checkout, never a
+ * placeholder. No unit id/count leaves this mapper (this card's security
+ * check, mirrored from D122's `toPublicVariant`) — `unitsTotal` is never
+ * read here at all.
+ */
+function toPublicRentalVariant(variant: Variant): PublicRentalVariant {
+  return {
+    id: variant.id,
+    sku: variant.sku,
+    name: variant.name,
+    priceMinor: variant.priceMinor,
+    currency: variant.currency,
+    ratePeriod: variant.ratePeriod,
+    depositMinor: variant.depositMinor,
+  };
+}
+
 export interface RegisterPublicStorefrontRoutesOptions {
   rateLimit?: { limit: number; windowMs: number };
 }
@@ -109,6 +138,10 @@ export function registerPublicStorefrontRoutes(
 ): void {
   const getServices = createServiceFactory(connection);
   const limiter = new SlidingWindowRateLimiter(options.rateLimit?.limit ?? 30, options.rateLimit?.windowMs ?? 60_000);
+  // Same tight budget as `./availability.ts` — cheapest to scrape, most
+  // expensive to compute, deliberately its own limiter rather than sharing
+  // `limiter` above.
+  const availabilityLimiter = new SlidingWindowRateLimiter(3, 60_000);
 
   app.get<{ Params: { slug: string } }>("/v1/m/:slug", async (request, reply) => {
     if (!limiter.consume(`ip:${request.ip}`)) {
@@ -158,11 +191,11 @@ export function registerPublicStorefrontRoutes(
 
   /**
    * `docs/cards/D122.md`'s product detail page, extended by `docs/cards/D123.md`
-   * to also serve SERVICE listings — a RENTAL listing's slug still 404s here
-   * exactly like an unknown one (D124's scope, not yet built), no different
-   * response shape that would confirm it exists under a mode this route
-   * doesn't yet serve. Same unauthenticated + rate-limited + `PUBLISHED`-
-   * only posture as the two routes above.
+   * to also serve SERVICE listings and `docs/cards/D124.md` to also serve
+   * RENTAL listings — every listing mode this route can ever return
+   * (`LISTING_MODES`) now has a branch, so an unknown mode can no longer
+   * reach here undetected. Same unauthenticated + rate-limited +
+   * `PUBLISHED`-only posture as the two routes above.
    */
   app.get<{ Params: { slug: string; listingSlug: string } }>(
     "/v1/m/:slug/listings/:listingSlug",
@@ -179,7 +212,7 @@ export function registerPublicStorefrontRoutes(
 
       const ctx = createTenantContext(merchant.id);
       const listing = listings.findPublishedBySlug(ctx, request.params.listingSlug);
-      if (!listing || (listing.mode !== "PRODUCT" && listing.mode !== "SERVICE")) {
+      if (!listing) {
         return sendProblem(request, reply, 404, problemType("not-found"), "Not Found", "No listing with that slug.");
       }
 
@@ -199,6 +232,14 @@ export function registerPublicStorefrontRoutes(
         return reply.code(200).send(detail);
       }
 
+      if (listing.mode === "RENTAL") {
+        const detail: PublicRentalDetail = {
+          ...toPublicListing(listing),
+          variants: variants.listByListing(ctx, listing.id).map(toPublicRentalVariant),
+        };
+        return reply.code(200).send(detail);
+      }
+
       const detail: PublicProductDetail = {
         ...toPublicListing(listing),
         variants: variants
@@ -208,4 +249,66 @@ export function registerPublicStorefrontRoutes(
       return reply.code(200).send(detail);
     },
   );
+
+  /**
+   * `docs/cards/D124.md`'s "unavailable ranges blocked" acceptance
+   * criterion — a bare boolean, computed the same candidate-narrowing
+   * `RentalReservationService.createRentalReservation`
+   * (`packages/db/src/services/RentalReservationService.ts`) uses to pick a
+   * unit, minus the write: does at least one `AVAILABLE` unit for
+   * `variantId` have no blocking reservation over `[from, to)`. Deliberately
+   * bypasses `RentalReservationService` itself — that service asserts
+   * `bookings:manage`, an authenticated-staff action, and this route has no
+   * session (a storefront visitor browsing dates before checkout). Same
+   * tight, unauthenticated rate-limit posture as `./availability.ts` (this
+   * card's security check's neighbor concern): cheap to scrape, so it gets
+   * its own budget rather than the wider catalog-read one above.
+   */
+  app.get<{
+    Params: { slug: string; listingSlug: string };
+    Querystring: { variantId?: string; from?: string; to?: string };
+  }>("/v1/m/:slug/listings/:listingSlug/rental-availability", async (request, reply) => {
+    if (!availabilityLimiter.consume(`ip:${request.ip}`)) {
+      return sendProblem(
+        request,
+        reply,
+        429,
+        problemType("rate-limited"),
+        "Too Many Requests",
+        "Too many availability requests. Try again later.",
+      );
+    }
+
+    const { variantId, from, to } = request.query;
+    if (!variantId || !from || !to) {
+      return sendProblem(
+        request,
+        reply,
+        400,
+        problemType("bad-request"),
+        "Bad Request",
+        "variantId, from, and to are required query parameters.",
+      );
+    }
+
+    const { merchants, listings, inventoryUnits, reservations } = await getServices();
+    const merchant = merchants.findBySlug(request.params.slug);
+    if (!merchant) {
+      return sendProblem(request, reply, 404, problemType("not-found"), "Not Found", "No merchant with that slug.");
+    }
+
+    const ctx = createTenantContext(merchant.id);
+    const listing = listings.findPublishedBySlug(ctx, request.params.listingSlug);
+    if (!listing || listing.mode !== "RENTAL") {
+      return sendProblem(request, reply, 404, problemType("not-found"), "Not Found", "No listing with that slug.");
+    }
+
+    const now = new Date().toISOString();
+    const available = inventoryUnits
+      .listByVariant(ctx, variantId)
+      .filter((unit) => unit.status === "AVAILABLE")
+      .some((unit) => reservations.findBlocking(ctx, "INVENTORY_UNIT", unit.id, from, to, now).length === 0);
+
+    return reply.code(200).send({ available });
+  });
 }
