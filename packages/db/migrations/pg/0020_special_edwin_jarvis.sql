@@ -1,0 +1,1 @@
+ALTER TABLE "merchants" ADD COLUMN "connect_account_id" text;

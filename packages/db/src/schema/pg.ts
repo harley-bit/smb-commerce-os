@@ -51,6 +51,12 @@ export const merchants = pgTable(
     businessState: text("business_state"),
     businessPostalCode: text("business_postal_code"),
     businessCountry: text("business_country"),
+    // Stripe Connect account id (D104), set once the merchant starts hosted
+    // onboarding via `ConnectOnboardingService`. Nullable: pre-D104 rows and
+    // any merchant that hasn't started payouts onboarding yet have none. We
+    // never store bank details ourselves — this is only the provider's own
+    // opaque account identifier, not underwriting data.
+    connectAccountId: text("connect_account_id"),
   },
   (table) => [uniqueIndex("merchants_slug_unique").on(table.slug)],
 );

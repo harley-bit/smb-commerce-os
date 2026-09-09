@@ -50,7 +50,10 @@ export default function OnboardingPage() {
       return;
     }
 
-    window.location.href = "/dashboard";
+    const body = (await response.json()) as { merchantId: string };
+    // The next step is payouts onboarding (D104) — a brand-new merchant
+    // can't accept a real payment until Stripe Connect is set up.
+    window.location.href = `/dashboard/payments?merchantId=${body.merchantId}`;
   }
 
   return (

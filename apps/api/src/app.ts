@@ -3,10 +3,12 @@ import type { Writable } from "node:stream";
 import cookie from "@fastify/cookie";
 import Fastify, { type FastifyError, type FastifyInstance } from "fastify";
 import type { AuthProvider } from "@smb-os/domain";
-import { AvailabilityCache, createConnection as createDbConnection, type Connection } from "@smb-os/db";
+import { AvailabilityCache, SimulatedConnectAccountProvider, createConnection as createDbConnection, type Connection } from "@smb-os/db";
+import type { ConnectAccountProvider } from "@smb-os/domain";
 import { problemType, sendProblem } from "./problemDetails.js";
 import { registerAvailabilityRoutes } from "./routes/availability.js";
 import { registerBookingRoutes } from "./routes/bookings.js";
+import { registerConnectRoutes } from "./routes/connect.js";
 import { registerListingRoutes } from "./routes/listings.js";
 import { registerMerchantRoutes } from "./routes/merchants.js";
 import { registerWebhookRoutes } from "./routes/webhooks.js";
@@ -71,6 +73,16 @@ export interface BuildAppOptions {
    * endpoint configuration, never a hardcoded default.
    */
   stripeWebhookSecret?: string;
+  /**
+   * `docs/cards/D104.md` — Stripe Connect account provider behind
+   * `./routes/connect.ts`. Defaults to `SimulatedConnectAccountProvider`,
+   * same "native now, real provider later" situation as every other
+   * payments seam in this codebase — no Stripe platform account is
+   * provisioned yet.
+   */
+  connectAccountProvider?: ConnectAccountProvider;
+  /** Base URL of the merchant-facing web app; used to build Connect onboarding's hosted-flow refresh/return URLs. */
+  webBaseUrl?: string;
 }
 
 const REQUEST_ID_HEADER = "x-request-id";
@@ -161,6 +173,9 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   });
   registerBookingRoutes(app, connection, availabilityCache);
   registerWebhookRoutes(app, options.stripeWebhookSecret ?? "whsec_dev_placeholder", connection);
+  registerConnectRoutes(app, connection, options.connectAccountProvider ?? new SimulatedConnectAccountProvider(), {
+    webBaseUrl: options.webBaseUrl ?? "http://localhost:3000",
+  });
 
   app.addHook("onSend", async (request, reply, payload) => {
     void reply.header(REQUEST_ID_HEADER, request.id);

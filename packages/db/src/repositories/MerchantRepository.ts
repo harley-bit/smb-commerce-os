@@ -19,6 +19,7 @@ export interface Merchant {
   businessState: string | null;
   businessPostalCode: string | null;
   businessCountry: string | null;
+  connectAccountId: string | null;
 }
 
 /**
@@ -44,6 +45,7 @@ export interface CreateMerchantInput {
 }
 
 export interface UpdateMerchantInput {
+  connectAccountId?: string;
   name?: string;
   slug?: string;
   status?: Merchant["status"];
