@@ -348,3 +348,17 @@ export {
   MissingTermsVersionError,
   type SubmitCheckoutDetailsInput,
 } from "./services/CheckoutDetailsService.js";
+export {
+  DepositConsentRepository,
+  type DepositConsent,
+  type RecordDepositConsentInput,
+} from "./repositories/DepositConsentRepository.js";
+export {
+  CheckoutDepositConsentService,
+  OrderNotFoundError as CheckoutDepositOrderNotFoundError,
+  NotOrderOwnerError as CheckoutDepositNotOrderOwnerError,
+  OrderNotCheckoutableError as CheckoutDepositOrderNotCheckoutableError,
+  OrderLineNotFoundError as CheckoutDepositOrderLineNotFoundError,
+  type AcknowledgeDepositInput,
+  type DepositConsentResult,
+} from "./services/CheckoutDepositConsentService.js";

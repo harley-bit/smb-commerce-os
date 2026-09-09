@@ -551,6 +551,42 @@ export const checkoutConsents = pgTable(
 );
 
 /**
+ * `docs/cards/D129.md` — the PostgreSQL-dialect twin of
+ * `schema/sqlite.ts`'s `depositConsents`. See that file for the doc
+ * comment.
+ */
+export const depositConsents = pgTable(
+  "deposit_consents",
+  {
+    id: uuid("id").primaryKey(),
+    merchantId: uuid("merchant_id")
+      .notNull()
+      .references(() => merchants.id),
+    orderId: uuid("order_id")
+      .notNull()
+      .references(() => orders.id),
+    orderLineId: uuid("order_line_id")
+      .notNull()
+      .references(() => orderLines.id),
+    customerUserId: uuid("customer_user_id")
+      .notNull()
+      .references(() => users.id),
+    holdAmountMinor: integer("hold_amount_minor").notNull(),
+    currency: text("currency").notNull(),
+    holdDurationDays: integer("hold_duration_days").notNull(),
+    acknowledgedAt: timestamp("acknowledged_at", { withTimezone: true }).notNull(),
+    ip: text("ip"),
+    userAgent: text("user_agent"),
+  },
+  (table) => [
+    index("deposit_consents_merchant_order_line_idx").on(
+      table.merchantId,
+      table.orderLineId,
+    ),
+  ],
+);
+
+/**
  * `docs/design/03` "Payments and deposits". `provider_ref` is unique per
  * `provider` — the idempotency anchor `06`'s webhook handler looks up before
  * reprocessing an event, so the same provider can never record the same

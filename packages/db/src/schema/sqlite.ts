@@ -554,6 +554,49 @@ export const checkoutConsents = sqliteTable(
 );
 
 /**
+ * `docs/cards/D129.md`. Append-only evidence that the customer was shown,
+ * and consented to, the deposit hold disclosure (`@smb-os/domain`'s
+ * `buildDepositDisclosure`) for a specific rental order line — the same
+ * repudiation-defence mitigation shape as `checkout_consents`, but for
+ * "Customer denies agreeing to deposit terms" (`docs/design/07`) rather
+ * than terms-of-service. `hold_amount_minor`/`currency`/`hold_duration_days`
+ * are recorded on the row (not just referenced by `order_line_id`) so the
+ * consent evidence still shows exactly what was disclosed even if the order
+ * line's own deposit or dates change later. Mirrored into `audit_log`
+ * (`CheckoutDepositConsentService`), same as `checkout_consents`.
+ */
+export const depositConsents = sqliteTable(
+  "deposit_consents",
+  {
+    id: text("id").primaryKey(),
+    merchantId: text("merchant_id")
+      .notNull()
+      .references(() => merchants.id),
+    orderId: text("order_id")
+      .notNull()
+      .references(() => orders.id),
+    orderLineId: text("order_line_id")
+      .notNull()
+      .references(() => orderLines.id),
+    customerUserId: text("customer_user_id")
+      .notNull()
+      .references(() => users.id),
+    holdAmountMinor: integer("hold_amount_minor").notNull(),
+    currency: text("currency").notNull(),
+    holdDurationDays: integer("hold_duration_days").notNull(),
+    acknowledgedAt: text("acknowledged_at").notNull(),
+    ip: text("ip"),
+    userAgent: text("user_agent"),
+  },
+  (table) => [
+    index("deposit_consents_merchant_order_line_idx").on(
+      table.merchantId,
+      table.orderLineId,
+    ),
+  ],
+);
+
+/**
  * `docs/design/03` "Payments and deposits". `provider_ref` is unique per
  * `provider` — the idempotency anchor `06`'s webhook handler looks up before
  * reprocessing an event, so the same provider can never record the same
