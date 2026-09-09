@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { OrderHistoryView } from "./OrderHistoryView";
 
@@ -52,5 +52,42 @@ describe("OrderHistoryView", () => {
     render(<OrderHistoryView slug={SLUG} />);
 
     expect(await screen.findByRole("alert")).toHaveTextContent(/sign in/i);
+  });
+
+  it("D136: an upcoming order can be cancelled, and the list reflects CANCELLED after — no page reload needed", async () => {
+    const cancelledHistory = {
+      ...HISTORY,
+      upcoming: [{ ...HISTORY.upcoming[0], status: "CANCELLED" }],
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(HISTORY))
+      .mockResolvedValueOnce(jsonResponse({ orderId: "order-upcoming", status: "CANCELLED" }))
+      .mockResolvedValueOnce(jsonResponse(cancelledHistory));
+    vi.stubGlobal("fetch", fetchMock);
+    const { default: userEvent } = await import("@testing-library/user-event");
+    const user = userEvent.setup();
+
+    render(<OrderHistoryView slug={SLUG} />);
+    await screen.findByText(/45\.00 USD/);
+
+    await user.click(screen.getByRole("button", { name: /cancel/i }));
+
+    expect(await screen.findByText(/CANCELLED/)).toBeInTheDocument();
+    const [url, init] = fetchMock.mock.calls[1] as [string, RequestInit];
+    expect(url).toContain(`/v1/m/${SLUG}/account/orders/order-upcoming/cancel`);
+    expect(init.method).toBe("POST");
+    expect(init.credentials).toBe("include");
+    expect((init.headers as Record<string, string>)["idempotency-key"]).toBeTruthy();
+  });
+
+  it("never offers to cancel a past order", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(HISTORY)));
+
+    render(<OrderHistoryView slug={SLUG} />);
+    await screen.findByText(/12\.00 USD/);
+
+    const pastSection = screen.getByText(/past/i).closest("section")!;
+    expect(within(pastSection).queryByRole("button", { name: /cancel/i })).not.toBeInTheDocument();
   });
 });

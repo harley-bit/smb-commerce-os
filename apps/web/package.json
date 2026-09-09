@@ -10,7 +10,8 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:isolation": "echo \"@smb-os/web: no isolation suite yet\"",
-    "dev": "next dev"
+    "dev": "next dev",
+    "start": "next start"
   },
   "dependencies": {
     "@smb-os/contracts": "workspace:*",

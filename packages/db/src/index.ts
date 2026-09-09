@@ -7,6 +7,16 @@ export function dbPackageMarker(): string {
 export { createConnection, type Connection } from "./connection.js";
 export { createPgConnection } from "./pg-connection.js";
 export { runSqliteMigrations, runPgMigrations } from "./migrate.js";
+/**
+ * `docs/cards/D136.md` — `e2e/`'s fixtures need to insert a `users` row an
+ * inventory movement's `actorUserId` (and similar FKs) can reference, the
+ * same raw-schema-insert pattern every `packages/db` fixture already uses
+ * internally (`sqliteSchema.users` — see any repository test's
+ * `beforeEach`). No `UserRepository` wraps this table (it's an FK anchor,
+ * not tenant-scoped data), so this is the schema itself, not a new
+ * repository.
+ */
+export * as sqliteSchema from "./schema/sqlite.js";
 export { TenantScopedRepository, type RepositoryMethod } from "./tenancy/TenantScopedRepository.js";
 export {
   listTenantScopedMethods,

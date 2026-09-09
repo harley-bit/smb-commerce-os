@@ -37,4 +37,16 @@ describe("buildCspHeader", () => {
     const second = buildCspHeader("nonce-two");
     expect(first).not.toBe(second);
   });
+
+  it("connect-src allows only same-origin by default, when no API origin is supplied", () => {
+    const header = buildCspHeader("abc123");
+    const connectSrc = header.split(";").map((d) => d.trim()).find((d) => d.startsWith("connect-src"));
+    expect(connectSrc).toBe("connect-src 'self'");
+  });
+
+  it("connect-src allows a configured API origin — every storefront/dashboard page fetches apps/api cross-origin", () => {
+    const header = buildCspHeader("abc123", "http://localhost:3001");
+    const connectSrc = header.split(";").map((d) => d.trim()).find((d) => d.startsWith("connect-src"));
+    expect(connectSrc).toBe("connect-src 'self' http://localhost:3001");
+  });
 });

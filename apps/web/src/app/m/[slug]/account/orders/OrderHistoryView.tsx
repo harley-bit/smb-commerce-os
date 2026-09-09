@@ -28,7 +28,13 @@ function formatMinor(amountMinor: number, currency: string): string {
   return `${(amountMinor / 100).toFixed(2)} ${currency}`;
 }
 
-function OrderList({ orders }: { orders: OrderHistorySummary[] }) {
+function OrderList({
+  orders,
+  onCancel,
+}: {
+  orders: OrderHistorySummary[];
+  onCancel?: (orderId: string) => void;
+}) {
   if (orders.length === 0) {
     return <p>Nothing here yet.</p>;
   }
@@ -37,6 +43,11 @@ function OrderList({ orders }: { orders: OrderHistorySummary[] }) {
       {orders.map((order) => (
         <li key={order.id}>
           {formatMinor(order.totalMinor, order.currency)} — {order.status} — {order.modes.join(", ")}
+          {onCancel && order.status !== "CANCELLED" && (
+            <button type="button" onClick={() => onCancel(order.id)}>
+              Cancel
+            </button>
+          )}
         </li>
       ))}
     </ul>
@@ -81,6 +92,26 @@ export function OrderHistoryView({ slug }: OrderHistoryViewProps) {
     };
   }, [slug]);
 
+  async function handleCancel(orderId: string) {
+    const response = await fetch(`${API_BASE_URL}/v1/m/${slug}/account/orders/${orderId}/cancel`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "idempotency-key": crypto.randomUUID() },
+    });
+    if (!response.ok) {
+      setError("Could not cancel that order. Please try again.");
+      return;
+    }
+    // `apps/api/src/routes/customerOrders.ts` has already applied the
+    // refund/deposit-release side effects server-side by the time this
+    // resolves; re-fetching (rather than optimistically patching local
+    // state) keeps this view showing exactly what the server recorded.
+    const refreshed = await fetch(`${API_BASE_URL}/v1/m/${slug}/account/orders`, { credentials: "include" });
+    if (refreshed.ok) {
+      setHistory((await refreshed.json()) as OrderHistory);
+    }
+  }
+
   if (error) {
     return (
       <main>
@@ -104,7 +135,7 @@ export function OrderHistoryView({ slug }: OrderHistoryViewProps) {
       <h1>Your orders</h1>
       <section>
         <h2>Upcoming</h2>
-        <OrderList orders={history.upcoming} />
+        <OrderList orders={history.upcoming} onCancel={handleCancel} />
       </section>
       <section>
         <h2>Past</h2>

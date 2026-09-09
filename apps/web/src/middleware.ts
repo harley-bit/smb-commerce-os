@@ -13,7 +13,7 @@ const API_BASE_URL = process.env.API_URL ?? "http://localhost:3001";
 // framework scripts) and the response's CSP header itself.
 function applyCsp(request: NextRequest, response: NextResponse): NextResponse {
   const nonce = crypto.randomUUID();
-  response.headers.set("Content-Security-Policy", buildCspHeader(nonce));
+  response.headers.set("Content-Security-Policy", buildCspHeader(nonce, API_BASE_URL));
   response.headers.set("x-nonce", nonce);
   request.headers.set("x-nonce", nonce);
   return response;

@@ -8,15 +8,23 @@
  * nonce must be freshly generated per request by the caller (see
  * `middleware.ts`) — reusing one across requests would let an attacker who
  * captures it once bypass the policy for every later request.
+ *
+ * `apiOrigin` — every page in this app fetches `apps/api` directly from
+ * the browser (a different origin in every real deployment), which a bare
+ * `connect-src 'self'` silently blocks; only found via D136's first real
+ * Playwright run against an actual Chromium instance, since every prior
+ * CSP test exercised this header's string shape in isolation, never a
+ * real page's fetch against it. Omitted (same-origin only) unless the
+ * caller supplies it.
  */
-export function buildCspHeader(nonce: string): string {
+export function buildCspHeader(nonce: string, apiOrigin?: string): string {
   const directives = [
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`,
     "style-src 'self'",
     "img-src 'self' data:",
     "font-src 'self'",
-    "connect-src 'self'",
+    `connect-src 'self'${apiOrigin ? ` ${apiOrigin}` : ""}`,
     "object-src 'none'",
     "base-uri 'self'",
     "frame-ancestors 'none'",

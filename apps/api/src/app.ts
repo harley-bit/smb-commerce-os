@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Writable } from "node:stream";
 import cookie from "@fastify/cookie";
+import cors from "@fastify/cors";
 import Fastify, { type FastifyError, type FastifyInstance } from "fastify";
 import type { AuthProvider } from "@smb-os/domain";
 import {
@@ -253,6 +254,17 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     },
   });
   void app.register(cookie);
+  // `docs/cards/D136.md` — same `allowedOrigins` allowlist `./auth/originCheck.ts`'s
+  // CSRF check reads below; without this, every cross-origin `fetch(...,
+  // { credentials: "include" })` `apps/web` makes is blocked by the
+  // browser itself (no test in this suite ever exercised real CORS —
+  // `app.inject()` bypasses the network stack entirely). An empty
+  // allowlist (every test's default) reflects no origin, matching the
+  // existing default-deny posture.
+  void app.register(cors, {
+    origin: [...allowedOrigins],
+    credentials: true,
+  });
 
   // `docs/cards/D091.md` — capture the exact raw body alongside the parsed
   // JSON so `./routes/webhooks.ts` can verify Stripe's signature over the

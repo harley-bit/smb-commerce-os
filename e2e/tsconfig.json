@@ -1,0 +1,12 @@
+{
+  "extends": "../packages/config/tsconfig.base.json",
+  "compilerOptions": {
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "noEmit": true,
+    "isolatedModules": true
+  },
+  "include": ["fixtures", "tests", "playwright.config.ts"],
+  "exclude": ["node_modules"],
+  "references": [{ "path": "../packages/db" }, { "path": "../packages/domain" }]
+}

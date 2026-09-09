@@ -1,0 +1,24 @@
+{
+  "name": "@smb-os/e2e",
+  "private": true,
+  "version": "0.0.0",
+  "license": "UNLICENSED",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "@smb-os/db": "workspace:*",
+    "@smb-os/domain": "workspace:*",
+    "otpauth": "^9.5.2"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@smb-os/eslint-config": "workspace:*",
+    "@types/node": "^26.4.1",
+    "eslint": "^10.10.0",
+    "typescript": "^5.7.2"
+  }
+}
