@@ -8,7 +8,7 @@ import {
   VariantService,
   type Connection,
 } from "@smb-os/db";
-import { createVariantInputSchema } from "@smb-os/contracts";
+import { createVariantInputSchema, updateVariantInputSchema } from "@smb-os/contracts";
 import { problemType, sendProblem } from "../problemDetails.js";
 
 /**
@@ -97,6 +97,35 @@ export function registerVariantRoutes(app: FastifyInstance, connection: Connecti
       }
       const id = variantService.create(request.auth!.tenant, request.auth!.role, parsed.data);
       return reply.code(201).send({ id });
+    },
+  );
+
+  app.put<{ Params: { listingId: string; variantId: string }; Body: unknown }>(
+    "/listings/:listingId/variants/:variantId",
+    { preHandler: app.authenticate },
+    async (request, reply) => {
+      if (!requireAction(request, reply, "catalog:manage")) {
+        return reply;
+      }
+      const { listingService, variantService } = await getServices();
+      const listing = listingService.findById(request.auth!.tenant, request.params.listingId);
+      if (!listing) {
+        return sendProblem(request, reply, 404, problemType("not-found"), "Not Found", "No listing with that id.");
+      }
+      const variant = variantService.findById(request.auth!.tenant, request.params.variantId);
+      if (!variant || variant.listingId !== listing.id) {
+        return sendProblem(request, reply, 404, problemType("not-found"), "Not Found", "No variant with that id.");
+      }
+
+      // `.strict()` in `updateVariantInputSchema` rejects a body carrying
+      // `mode`/`listingId` outright — a variant's mode/parent listing are
+      // fixed at creation, mirroring `UpdateVariantInput`'s own shape.
+      const parsed = updateVariantInputSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return sendProblem(request, reply, 400, problemType("bad-request"), "Bad Request", parsed.error.message);
+      }
+      variantService.update(request.auth!.tenant, request.auth!.role, variant.id, parsed.data);
+      return reply.code(200).send({ id: variant.id });
     },
   );
 }

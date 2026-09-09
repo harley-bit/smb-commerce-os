@@ -119,6 +119,7 @@ export function CatalogView({ merchantId }: CatalogViewProps) {
               <th>Name</th>
               <th>Mode</th>
               <th>Status</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
@@ -127,6 +128,9 @@ export function CatalogView({ merchantId }: CatalogViewProps) {
                 <td>{listing.name}</td>
                 <td>{listing.mode}</td>
                 <td>{listing.status}</td>
+                <td>
+                  <a href={`/dashboard/catalog/${listing.id}/variants?merchantId=${merchantId}`}>Manage variants</a>
+                </td>
               </tr>
             ))}
           </tbody>
