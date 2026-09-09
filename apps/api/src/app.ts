@@ -8,14 +8,21 @@ import {
   HmacMediaUploadProvider,
   SimulatedConnectAccountProvider,
   SimulatedDepositHoldProvider,
+  SimulatedPaymentIntentProvider,
   createConnection as createDbConnection,
   type Connection,
   type RoleChangeNotifier,
 } from "@smb-os/db";
-import type { ConnectAccountProvider, DepositHoldProvider, MediaUploadProvider } from "@smb-os/domain";
+import type {
+  ConnectAccountProvider,
+  DepositHoldProvider,
+  MediaUploadProvider,
+  PaymentIntentProvider,
+} from "@smb-os/domain";
 import { problemType, sendProblem } from "./problemDetails.js";
 import { registerAvailabilityRoutes } from "./routes/availability.js";
 import { registerPublicStorefrontRoutes } from "./routes/publicStorefront.js";
+import { registerCheckoutPaymentRoutes } from "./routes/checkoutPayment.js";
 import { registerBookingRoutes } from "./routes/bookings.js";
 import { registerCalendarRoutes } from "./routes/calendar.js";
 import { registerOrderRoutes } from "./routes/orders.js";
@@ -128,6 +135,16 @@ export interface BuildAppOptions {
    * assignment has already been durably audit-logged.
    */
   onRoleChanged?: RoleChangeNotifier;
+  /**
+   * `docs/cards/D130.md` — the `PaymentIntentProvider` behind
+   * `./routes/checkoutPayment.ts`. Same "native/simulated now, real
+   * provider later" precedent as every other payments seam in this
+   * codebase (D089) — no Stripe platform account is provisioned yet.
+   */
+  paymentIntentProvider?: PaymentIntentProvider;
+  /** `docs/cards/D130.md` — the platform take rate charged on a storefront checkout; see `./routes/checkoutPayment.ts`. */
+  checkoutTakeRateBasisPoints?: number;
+  publicCheckoutRateLimit?: { limit: number; windowMs: number };
 }
 
 const REQUEST_ID_HEADER = "x-request-id";
@@ -223,6 +240,15 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   registerPublicStorefrontRoutes(app, connection, {
     rateLimit: options.publicCatalogRateLimit,
   });
+  registerCheckoutPaymentRoutes(
+    app,
+    connection,
+    options.paymentIntentProvider ?? new SimulatedPaymentIntentProvider(),
+    {
+      rateLimit: options.publicCheckoutRateLimit,
+      takeRateBasisPoints: options.checkoutTakeRateBasisPoints,
+    },
+  );
   registerBookingRoutes(app, connection, availabilityCache);
   registerCalendarRoutes(app, connection);
   registerOrderRoutes(app, connection);

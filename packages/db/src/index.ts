@@ -285,6 +285,7 @@ export { SimulatedPaymentIntentProvider } from "./payments/SimulatedPaymentInten
 export {
   CheckoutPaymentService,
   MissingIdempotencyKeyError as CheckoutMissingIdempotencyKeyError,
+  PaymentDeclinedError,
   type CreateCheckoutIntentInput,
   type CheckoutIntentResult,
 } from "./services/CheckoutPaymentService.js";
