@@ -35,6 +35,18 @@ export const merchants = sqliteTable(
     defaultCurrency: text("default_currency").notNull(),
     createdAt: text("created_at").notNull(),
     archivedAt: text("archived_at"),
+    // Seller identity, captured at onboarding (D103) — DAC7/DSA readiness
+    // per `docs/design/08` line 11. Nullable: pre-onboarding fixture rows
+    // created before this card (and cards that only need a merchant row to
+    // exist for an FK, not a real onboarding) never set them.
+    legalName: text("legal_name"),
+    taxId: text("tax_id"),
+    businessAddressLine1: text("business_address_line1"),
+    businessAddressLine2: text("business_address_line2"),
+    businessCity: text("business_city"),
+    businessState: text("business_state"),
+    businessPostalCode: text("business_postal_code"),
+    businessCountry: text("business_country"),
   },
   (table) => [uniqueIndex("merchants_slug_unique").on(table.slug)],
 );

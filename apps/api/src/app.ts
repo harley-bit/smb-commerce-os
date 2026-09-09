@@ -8,6 +8,7 @@ import { problemType, sendProblem } from "./problemDetails.js";
 import { registerAvailabilityRoutes } from "./routes/availability.js";
 import { registerBookingRoutes } from "./routes/bookings.js";
 import { registerListingRoutes } from "./routes/listings.js";
+import { registerMerchantRoutes } from "./routes/merchants.js";
 import { registerWebhookRoutes } from "./routes/webhooks.js";
 import {
   AccountLockedError,
@@ -154,6 +155,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   const connection = options.connection ?? createDbConnection(":memory:");
   const availabilityCache = options.availabilityCache ?? new AvailabilityCache();
   registerListingRoutes(app, connection);
+  registerMerchantRoutes(app, connection, authProvider);
   registerAvailabilityRoutes(app, connection, availabilityCache, {
     rateLimit: options.availabilityRateLimit,
   });

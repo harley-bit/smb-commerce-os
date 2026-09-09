@@ -106,6 +106,35 @@ describe("MerchantRepository", () => {
     expect(repo.findOwn(ctxB)?.archivedAt).toBeNull();
   });
 
+  it("captures seller identity fields at onboarding (D103 — DAC7/DSA readiness)", () => {
+    const ctx = createTenantContext(generateUuidV7());
+
+    repo.create(ctx, {
+      name: "Acme Rentals",
+      slug: "acme-rentals-identity",
+      status: "ACTIVE",
+      defaultCurrency: "USD",
+      createdAt: "2026-09-08T00:00:00.000Z",
+      legalName: "Acme Rentals LLC",
+      taxId: "12-3456789",
+      businessAddressLine1: "1 Main St",
+      businessCity: "Springfield",
+      businessState: "IL",
+      businessPostalCode: "62701",
+      businessCountry: "US",
+    });
+
+    expect(repo.findOwn(ctx)).toMatchObject({
+      legalName: "Acme Rentals LLC",
+      taxId: "12-3456789",
+      businessAddressLine1: "1 Main St",
+      businessCity: "Springfield",
+      businessState: "IL",
+      businessPostalCode: "62701",
+      businessCountry: "US",
+    });
+  });
+
   describe("findBySlug() — public lookup, no TenantContext (D060)", () => {
     it("resolves a merchant by slug without requiring the caller to already know its id", () => {
       const ctx = createTenantContext(generateUuidV7());

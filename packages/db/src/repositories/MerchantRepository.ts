@@ -11,14 +11,36 @@ export interface Merchant {
   defaultCurrency: string;
   createdAt: string;
   archivedAt: string | null;
+  legalName: string | null;
+  taxId: string | null;
+  businessAddressLine1: string | null;
+  businessAddressLine2: string | null;
+  businessCity: string | null;
+  businessState: string | null;
+  businessPostalCode: string | null;
+  businessCountry: string | null;
 }
 
+/**
+ * The seller-identity fields (`docs/design/08` line 11, DAC7/DSA
+ * readiness). Optional here — not every caller of `create` is D103's real
+ * onboarding route; older fixtures that only need a merchant row to exist
+ * for an FK still compile without supplying them.
+ */
 export interface CreateMerchantInput {
   name: string;
   slug: string;
   status: Merchant["status"];
   defaultCurrency: string;
   createdAt: string;
+  legalName?: string;
+  taxId?: string;
+  businessAddressLine1?: string;
+  businessAddressLine2?: string;
+  businessCity?: string;
+  businessState?: string;
+  businessPostalCode?: string;
+  businessCountry?: string;
 }
 
 export interface UpdateMerchantInput {
@@ -26,6 +48,14 @@ export interface UpdateMerchantInput {
   slug?: string;
   status?: Merchant["status"];
   defaultCurrency?: string;
+  legalName?: string;
+  taxId?: string;
+  businessAddressLine1?: string;
+  businessAddressLine2?: string;
+  businessCity?: string;
+  businessState?: string;
+  businessPostalCode?: string;
+  businessCountry?: string;
 }
 
 /**

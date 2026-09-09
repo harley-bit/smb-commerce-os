@@ -12,6 +12,11 @@ describe("findRouteRule", () => {
     expect(findRouteRule("/dashboard/orders")?.roles).toBeUndefined();
   });
 
+  it("requires only an authenticated session (no role restriction) for /onboarding", () => {
+    expect(findRouteRule("/onboarding")?.roles).toBeUndefined();
+    expect(findRouteRule("/onboarding")).toBeDefined();
+  });
+
   it("matches nothing outside the protected prefixes", () => {
     expect(findRouteRule("/login")).toBeUndefined();
     expect(findRouteRule("/")).toBeUndefined();

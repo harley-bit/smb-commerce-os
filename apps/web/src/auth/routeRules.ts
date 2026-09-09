@@ -14,6 +14,9 @@ export interface RouteRule {
 export const PROTECTED_ROUTE_RULES: readonly RouteRule[] = [
   { matcher: /^\/dashboard\/admin(?:\/|$)/, roles: ["OWNER", "ADMIN"] },
   { matcher: /^\/dashboard(?:\/|$)/ },
+  // Onboarding a brand-new merchant needs no merchant role yet — the
+  // caller isn't a member of any merchant until this flow completes.
+  { matcher: /^\/onboarding(?:\/|$)/ },
 ];
 
 export function findRouteRule(pathname: string): RouteRule | undefined {
