@@ -121,9 +121,21 @@ export class BookingService {
     );
   }
 
-  confirmServiceBooking(ctx: TenantContext, actingRole: MerchantUserRole, reservationId: string): void {
+  /**
+   * `docs/cards/D127.md` — `confirmedAt` is the "payment time" instant this
+   * confirmation happens at; passed through unconditionally to
+   * `ReservationRepository.confirm` so an unswept expired `HELD` reservation
+   * throws `HoldExpiredError` here instead of being silently confirmed
+   * (this card's security check).
+   */
+  confirmServiceBooking(
+    ctx: TenantContext,
+    actingRole: MerchantUserRole,
+    reservationId: string,
+    confirmedAt: string,
+  ): void {
     assertCan({ role: actingRole }, "bookings:manage");
-    this.reservations.confirm(ctx, reservationId);
+    this.reservations.confirm(ctx, reservationId, confirmedAt);
   }
 
   private assertUnderHoldCap(ctx: TenantContext, input: CreateServiceBookingInput): void {

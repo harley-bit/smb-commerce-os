@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { createConnection, type Connection } from "../connection.js";
 import { runSqliteMigrations } from "../migrate.js";
 import * as sqliteSchema from "../schema/sqlite.js";
-import { ReservationConflictError, ReservationRepository } from "./ReservationRepository.js";
+import { HoldExpiredError, ReservationConflictError, ReservationRepository } from "./ReservationRepository.js";
 
 describe("ReservationRepository", () => {
   let connection: Connection;
@@ -590,6 +590,60 @@ describe("ReservationRepository", () => {
 
     expect(() => repo.confirm(ctxB, id)).toThrow(`Reservation not found: ${id}`);
     expect(repo.findById(ctxA, id)?.state).toEqual("HELD");
+  });
+
+  it("confirm() throws HoldExpiredError when asOf is past the hold's expiresAt (D127) — prevents silent loss of a slot at payment time", () => {
+    const ctx = createTenantContext(merchantA);
+    const id = repo.createGuarded(ctx, {
+      subjectType: "RESOURCE",
+      subjectId: resourceA,
+      startsAt: "2026-10-01T09:00:00.000Z",
+      endsAt: "2026-10-01T10:00:00.000Z",
+      quantity: 1,
+      state: "HELD",
+      expiresAt: "2026-10-01T09:15:00.000Z",
+      createdAt: "2026-10-01T08:45:00.000Z",
+    });
+
+    expect(() => repo.confirm(ctx, id, "2026-10-01T09:15:00.001Z")).toThrow(HoldExpiredError);
+    // Rejected confirmation must not silently transition the row — still HELD, not CONFIRMED.
+    expect(repo.findById(ctx, id)?.state).toEqual("HELD");
+  });
+
+  it("confirm() succeeds when asOf is before the hold's expiresAt (D127)", () => {
+    const ctx = createTenantContext(merchantA);
+    const id = repo.createGuarded(ctx, {
+      subjectType: "RESOURCE",
+      subjectId: resourceA,
+      startsAt: "2026-10-01T09:00:00.000Z",
+      endsAt: "2026-10-01T10:00:00.000Z",
+      quantity: 1,
+      state: "HELD",
+      expiresAt: "2026-10-01T09:15:00.000Z",
+      createdAt: "2026-10-01T08:45:00.000Z",
+    });
+
+    repo.confirm(ctx, id, "2026-10-01T09:14:59.999Z");
+
+    expect(repo.findById(ctx, id)?.state).toEqual("CONFIRMED");
+  });
+
+  it("confirm() with no asOf supplied skips the expiry check (backward-compatible callers, D127)", () => {
+    const ctx = createTenantContext(merchantA);
+    const id = repo.createGuarded(ctx, {
+      subjectType: "RESOURCE",
+      subjectId: resourceA,
+      startsAt: "2026-10-01T09:00:00.000Z",
+      endsAt: "2026-10-01T10:00:00.000Z",
+      quantity: 1,
+      state: "HELD",
+      expiresAt: "2026-10-01T09:15:00.000Z",
+      createdAt: "2026-10-01T08:45:00.000Z",
+    });
+
+    repo.confirm(ctx, id);
+
+    expect(repo.findById(ctx, id)?.state).toEqual("CONFIRMED");
   });
 
   describe("countActiveHoldsByAccount() — docs/cards/D062.md", () => {

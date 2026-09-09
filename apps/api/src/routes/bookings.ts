@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { assertCan, ForbiddenActionError, IllegalReservationTransitionError } from "@smb-os/domain";
 import {
   BookingService,
+  HoldExpiredError,
   HoldLimitExceededError,
   MissingIdempotencyKeyError,
   ReservationConflictError,
@@ -172,10 +173,25 @@ export function registerBookingRoutes(app: FastifyInstance, connection: Connecti
         return sendProblem(request, reply, 404, problemType("not-found"), "Not Found", "No booking with that id.");
       }
       try {
-        bookings.confirmServiceBooking(request.auth!.tenant, request.auth!.role, request.params.id);
+        bookings.confirmServiceBooking(
+          request.auth!.tenant,
+          request.auth!.role,
+          request.params.id,
+          new Date().toISOString(),
+        );
       } catch (error) {
         if (error instanceof IllegalReservationTransitionError) {
           return sendProblem(request, reply, 409, problemType("conflict"), "Conflict", error.message);
+        }
+        if (error instanceof HoldExpiredError) {
+          return sendProblem(
+            request,
+            reply,
+            409,
+            problemType("hold-expired"),
+            "Conflict",
+            "This hold has expired. Please create a new booking.",
+          );
         }
         throw error;
       }

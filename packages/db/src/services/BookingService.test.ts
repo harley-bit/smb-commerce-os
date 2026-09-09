@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { createConnection, type Connection } from "../connection.js";
 import { runSqliteMigrations } from "../migrate.js";
 import * as sqliteSchema from "../schema/sqlite.js";
-import { ReservationConflictError, ReservationRepository } from "../repositories/ReservationRepository.js";
+import { HoldExpiredError, ReservationConflictError, ReservationRepository } from "../repositories/ReservationRepository.js";
 import { ResourceRepository } from "../repositories/ResourceRepository.js";
 import { BookingService, HoldLimitExceededError, MissingIdempotencyKeyError } from "./BookingService.js";
 
@@ -151,11 +151,32 @@ describe("BookingService", () => {
       createdAt: "2026-10-01T08:45:00.000Z",
     });
 
-    service.confirmServiceBooking(ctx, "STAFF", id);
+    service.confirmServiceBooking(ctx, "STAFF", id, "2026-10-01T08:50:00.000Z");
 
     const reservationRepo = new ReservationRepository(connection);
     const row = reservationRepo.findById(ctx, id);
     expect(row?.state).toEqual("CONFIRMED");
+  });
+
+  it("security: confirmServiceBooking() throws HoldExpiredError instead of silently confirming an expired hold (D127)", () => {
+    const ctx = createTenantContext(merchantA);
+
+    const id = service.createServiceBooking(ctx, "STAFF", {
+      resourceId: resourceA,
+      startsAt: "2026-10-01T09:00:00.000Z",
+      endsAt: "2026-10-01T10:00:00.000Z",
+      quantity: 1,
+      idempotencyKey: "idem-expired-confirm",
+      createdAt: "2026-10-01T08:45:00.000Z",
+      expiresAt: "2026-10-01T09:00:00.000Z",
+    });
+
+    expect(() => service.confirmServiceBooking(ctx, "STAFF", id, "2026-10-01T09:00:00.001Z")).toThrow(
+      HoldExpiredError,
+    );
+
+    const reservationRepo = new ReservationRepository(connection);
+    expect(reservationRepo.findById(ctx, id)?.state).toEqual("HELD");
   });
 
   describe("authorization — booking creation restricted to roles with bookings:manage", () => {

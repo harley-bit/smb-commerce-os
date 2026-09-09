@@ -108,8 +108,12 @@ describe("CalendarService", () => {
 
     expect(entries).toHaveLength(2);
     const bySubject = new Map(entries.map((e) => [e.subjectType, e]));
-    expect(bySubject.get("RESOURCE")).toMatchObject({ subjectLabel: "Jane", hasConflict: false });
-    expect(bySubject.get("INVENTORY_UNIT")).toMatchObject({ subjectLabel: "KAYAK-001", hasConflict: false });
+    expect(bySubject.get("RESOURCE")).toMatchObject({ subjectLabel: "Jane", hasConflict: false, expiresAt: null });
+    expect(bySubject.get("INVENTORY_UNIT")).toMatchObject({
+      subjectLabel: "KAYAK-001",
+      hasConflict: false,
+      expiresAt: "2026-12-01T00:00:00.000Z",
+    });
   });
 
   it("flags overlapping reservations for the same subject as conflicts", () => {

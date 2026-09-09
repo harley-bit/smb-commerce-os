@@ -119,6 +119,7 @@ export {
 export {
   ReservationRepository,
   ReservationConflictError,
+  HoldExpiredError,
   type Reservation,
   type ReservationSubjectType,
   type ReservationState,

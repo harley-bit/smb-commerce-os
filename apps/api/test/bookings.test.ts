@@ -354,4 +354,34 @@ describe("booking endpoints", () => {
       expect(res.statusCode).toBe(404);
     });
   });
+
+  describe("hold countdown (D127) — an unswept expired hold cannot be silently confirmed", () => {
+    it("confirming a booking after its hold has expired returns 409 with a clear, recoverable message", async () => {
+      const fx = await setupFixture("OWNER");
+      const service = new BookingService(new ResourceRepository(fx.connection), new ReservationRepository(fx.connection));
+      const id = service.createServiceBooking(createTenantContext(fx.merchantId), "OWNER", {
+        resourceId: fx.resourceId,
+        startsAt: STARTS_AT,
+        endsAt: ENDS_AT,
+        quantity: 1,
+        idempotencyKey: generateUuidV7(),
+        createdAt: CREATED_AT,
+        // Already expired relative to real "now" — the route always confirms
+        // against the current instant, never a caller-supplied one.
+        expiresAt: CREATED_AT,
+      });
+
+      const confirmRes = await fx.app.inject({
+        method: "POST",
+        url: `/bookings/${id}/confirm`,
+        headers: fx.merchantHeader,
+      });
+
+      expect(confirmRes.statusCode).toBe(409);
+      expect((confirmRes.json() as { detail?: string }).detail).toMatch(/expired/i);
+
+      const getRes = await fx.app.inject({ method: "GET", url: `/bookings/${id}`, headers: fx.merchantHeader });
+      expect((getRes.json() as { state: string }).state).toBe("HELD");
+    });
+  });
 });

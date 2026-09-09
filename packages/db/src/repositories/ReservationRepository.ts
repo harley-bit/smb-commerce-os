@@ -87,6 +87,25 @@ export class ReservationConflictError extends Error {
 }
 
 /**
+ * `docs/cards/D127.md` — thrown by `confirm` when the reservation is still
+ * `HELD` in the row (the sweeper hasn't run yet) but its own `expiresAt` has
+ * already passed as of the caller-supplied `asOf`. Without this check,
+ * `applyReservationEvent`'s HELD → CONFIRMED transition doesn't know about
+ * `expiresAt` at all — it would happily confirm a hold that
+ * `blockingStatePredicate` has already stopped treating as blocking
+ * elsewhere, which is exactly how a slot gets silently double-booked or a
+ * customer's payment succeeds against a slot that is no longer theirs. A
+ * clear, typed, catchable error at the confirm boundary (this card's
+ * security check) beats either of those two silent failure modes.
+ */
+export class HoldExpiredError extends Error {
+  constructor(public readonly reservationId: string) {
+    super(`Hold expired: reservation ${reservationId} can no longer be confirmed`);
+    this.name = "HoldExpiredError";
+  }
+}
+
+/**
  * `docs/design/05` — the only states that participate in overlap checks.
  * A `HELD` row additionally requires `expiresAt > asOf`: an unswept expired
  * hold is still in state `HELD` but must not block (this card's security
@@ -248,18 +267,31 @@ export class ReservationRepository extends TenantScopedRepository<typeof reserva
    * security check: one audited path means one place to review, log, and
    * reason about for every state change a reservation can ever undergo.
    */
-  private transition(ctx: TenantContext, id: string, eventType: ReservationEventType, releasedAt?: string): void {
+  private transition(
+    ctx: TenantContext,
+    id: string,
+    eventType: ReservationEventType,
+    options?: { releasedAt?: string; expiryAsOf?: string },
+  ): void {
     let subjectId = "";
     const attempt = this.conn.sqlite.transaction((): void => {
       const row = this.findById(ctx, id);
       if (!row) {
         throw new Error(`Reservation not found: ${id}`);
       }
+      if (
+        options?.expiryAsOf !== undefined &&
+        row.state === "HELD" &&
+        row.expiresAt !== null &&
+        row.expiresAt <= options.expiryAsOf
+      ) {
+        throw new HoldExpiredError(id);
+      }
       subjectId = row.subjectId;
       const nextState = applyReservationEvent(row.state, { type: eventType });
       this.conn.db
         .update(reservations)
-        .set(releasedAt === undefined ? { state: nextState } : { state: nextState, releasedAt })
+        .set(options?.releasedAt === undefined ? { state: nextState } : { state: nextState, releasedAt: options.releasedAt })
         .where(and(this.scope(ctx), eq(reservations.id, id)))
         .run();
     });
@@ -270,9 +302,13 @@ export class ReservationRepository extends TenantScopedRepository<typeof reserva
 
   /**
    * `docs/cards/D059.md` deliverable — the HELD → CONFIRMED transition.
+   * `docs/cards/D127.md` — `asOf`, when supplied, rejects confirming a hold
+   * whose `expiresAt` has already passed with `HoldExpiredError` rather than
+   * silently confirming it (this card's security check). Omitting `asOf`
+   * preserves every pre-D127 caller's behavior unchanged.
    */
-  confirm: RepositoryMethod<[id: string], void> = (ctx, id) => {
-    this.transition(ctx, id, "CONFIRM");
+  confirm: RepositoryMethod<[id: string, asOf?: string], void> = (ctx, id, asOf) => {
+    this.transition(ctx, id, "CONFIRM", { expiryAsOf: asOf });
   };
 
   /**
@@ -286,7 +322,7 @@ export class ReservationRepository extends TenantScopedRepository<typeof reserva
    * not started yet.
    */
   cancel: RepositoryMethod<[id: string, releasedAt: string], void> = (ctx, id, releasedAt) => {
-    this.transition(ctx, id, "CANCELLED", releasedAt);
+    this.transition(ctx, id, "CANCELLED", { releasedAt });
   };
 
   /**
@@ -310,7 +346,7 @@ export class ReservationRepository extends TenantScopedRepository<typeof reserva
    * transition, so it throws `IllegalReservationTransitionError`.
    */
   markReturned: RepositoryMethod<[id: string, releasedAt: string], void> = (ctx, id, releasedAt) => {
-    this.transition(ctx, id, "RETURNED", releasedAt);
+    this.transition(ctx, id, "RETURNED", { releasedAt });
   };
 
   /**

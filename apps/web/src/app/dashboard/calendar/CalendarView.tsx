@@ -16,9 +16,13 @@ interface CalendarEntry {
   state: string;
   orderLineId: string | null;
   hasConflict: boolean;
+  /** `docs/cards/D127.md` — `null` unless the entry is currently `HELD`. */
+  expiresAt: string | null;
 }
 
 const MODE_OPTIONS: readonly CalendarSubjectType[] = ["RESOURCE", "INVENTORY_UNIT"];
+
+const EXPIRED_HOLD_MESSAGE = "This hold has expired. Please create a new booking.";
 
 function toDateInputValue(date: Date): string {
   return date.toISOString().slice(0, 10);
@@ -28,6 +32,92 @@ function defaultRange(): { from: string; to: string } {
   const now = new Date();
   const weekOut = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
   return { from: toDateInputValue(now), to: toDateInputValue(weekOut) };
+}
+
+/**
+ * Mirrors `computeHoldCountdown` (`packages/domain/src/reservations/holdCountdown.ts`)
+ * exactly — pure math, no `Date.now()` inside. Duplicated rather than
+ * imported: `apps/web` has no dependency on `@smb-os/domain` (same
+ * boundary `apps/web/src/auth/access.ts` documents for `MerchantRole`).
+ */
+function computeHoldCountdown(expiresAt: string, now: Date): { msRemaining: number; expired: boolean } {
+  const msRemaining = Math.max(new Date(expiresAt).getTime() - now.getTime(), 0);
+  return { msRemaining, expired: msRemaining <= 0 };
+}
+
+function formatRemaining(msRemaining: number): string {
+  const totalSeconds = Math.ceil(msRemaining / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")} remaining`;
+}
+
+interface HoldCellProps {
+  merchantId: string;
+  entry: CalendarEntry;
+  onConfirmed: () => void;
+}
+
+/**
+ * `docs/cards/D127.md` — the visible hold countdown, ticking every second
+ * off `computeHoldCountdown` (`@smb-os/domain`, pure math, no `Date.now()`
+ * inside). Once `expiresAt` is reached, this cell stops offering a way to
+ * confirm the hold at all (`disabled`) rather than letting a click race the
+ * server — the graceful client-side half of this card's acceptance
+ * criterion. The server-side half is `POST /bookings/:id/confirm` throwing
+ * `HoldExpiredError` (`ReservationRepository.confirm`) for the case this
+ * client-side clock and the server's clock disagree, e.g. a hold that
+ * expired between page load and the click: `confirmError` below renders
+ * that 409's message exactly, never a raw error or a crash (this card's
+ * security check — "prevents silent loss of a slot at payment time").
+ */
+function HoldCell({ merchantId, entry, onConfirmed }: HoldCellProps) {
+  const [now, setNow] = useState(() => new Date());
+  const [confirming, setConfirming] = useState(false);
+  const [confirmError, setConfirmError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const interval = setInterval(() => setNow(new Date()), 1_000);
+    return () => clearInterval(interval);
+  }, []);
+
+  if (!entry.expiresAt) {
+    return null;
+  }
+
+  const { msRemaining, expired } = computeHoldCountdown(entry.expiresAt, now);
+
+  async function handleConfirm() {
+    setConfirming(true);
+    setConfirmError(null);
+    try {
+      const response = await fetch(`${API_BASE_URL}/bookings/${entry.id}/confirm`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "x-merchant-id": merchantId },
+      });
+      if (!response.ok) {
+        const body = (await response.json()) as { detail?: string };
+        setConfirmError(body.detail ?? "Could not confirm this booking.");
+        return;
+      }
+      onConfirmed();
+    } finally {
+      setConfirming(false);
+    }
+  }
+
+  return (
+    <>
+      <span>{expired ? EXPIRED_HOLD_MESSAGE : formatRemaining(msRemaining)}</span>
+      {entry.subjectType === "RESOURCE" && (
+        <button type="button" onClick={() => void handleConfirm()} disabled={expired || confirming}>
+          Confirm
+        </button>
+      )}
+      {confirmError && <span role="alert">{confirmError}</span>}
+    </>
+  );
 }
 
 export interface CalendarViewProps {
@@ -41,12 +131,16 @@ export interface CalendarViewProps {
  * base — the same `X-Merchant-Id`-header pattern `CatalogView`/
  * `PaymentsView` established. `hasConflict` (computed server-side) drives
  * the "Conflict" badge; this view never re-derives it client-side.
+ *
+ * `docs/cards/D127.md` extends this view with a "Hold" column: a live
+ * countdown plus a Confirm action for each `HELD` entry (`HoldCell` above).
  */
 export function CalendarView({ merchantId }: CalendarViewProps) {
   const [range, setRange] = useState(defaultRange);
   const [entries, setEntries] = useState<CalendarEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [modeFilter, setModeFilter] = useState<CalendarSubjectType | "ALL">("ALL");
+  const [refreshToken, setRefreshToken] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -71,7 +165,7 @@ export function CalendarView({ merchantId }: CalendarViewProps) {
     return () => {
       cancelled = true;
     };
-  }, [merchantId, range]);
+  }, [merchantId, range, refreshToken]);
 
   const filtered = useMemo(() => {
     if (!entries) return [];
@@ -132,6 +226,7 @@ export function CalendarView({ merchantId }: CalendarViewProps) {
               <th>Subject</th>
               <th>Mode</th>
               <th>State</th>
+              <th>Hold</th>
               <th></th>
             </tr>
           </thead>
@@ -143,6 +238,15 @@ export function CalendarView({ merchantId }: CalendarViewProps) {
                 <td>{entry.subjectLabel}</td>
                 <td>{entry.subjectType === "RESOURCE" ? "Booking" : "Rental"}</td>
                 <td>{entry.state}</td>
+                <td>
+                  {entry.state === "HELD" && (
+                    <HoldCell
+                      merchantId={merchantId}
+                      entry={entry}
+                      onConfirmed={() => setRefreshToken((token) => token + 1)}
+                    />
+                  )}
+                </td>
                 <td>{entry.hasConflict ? <span role="alert">Conflict</span> : null}</td>
               </tr>
             ))}

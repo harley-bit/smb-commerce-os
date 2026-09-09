@@ -13,6 +13,8 @@ export interface CalendarEntry {
   state: Reservation["state"];
   orderLineId: string | null;
   hasConflict: boolean;
+  /** `docs/cards/D127.md` — feeds the calendar's visible hold countdown; `null` for anything not currently `HELD`. */
+  expiresAt: string | null;
 }
 
 /**
@@ -69,6 +71,7 @@ export class CalendarService {
       state: row.state,
       orderLineId: row.orderLineId,
       hasConflict: conflictIds.has(row.id),
+      expiresAt: row.expiresAt,
     }));
   }
 
