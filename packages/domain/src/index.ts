@@ -38,6 +38,7 @@ export * from "./payments/declineHandling.js";
 export * from "./payments/depositDisclosure.js";
 export * from "./payments/orderReceipt.js";
 export * from "./media/mediaRetentionPolicy.js";
+export * from "./notifications/transactionalNotifications.js";
 
 export function workspaceGraphMarker(): string {
   return "@smb-os/domain";

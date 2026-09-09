@@ -156,6 +156,22 @@ export {
   type LateReturnNotifiers,
 } from "./jobs/LateReturnDetector.js";
 export {
+  detectUpcomingReservationsSqlite,
+  detectUpcomingReservationsPg,
+  type UpcomingReservation,
+  type ReservationReminderResult,
+  type UpcomingReservationNotifier,
+  type ReservationReminderNotifiers,
+} from "./jobs/ReservationReminderJob.js";
+export {
+  detectReturnsDueSqlite,
+  detectReturnsDuePg,
+  type ReturnDueReservation,
+  type ReturnDueResult,
+  type ReturnDueNotifier,
+  type ReturnDueNotifiers,
+} from "./jobs/ReturnDueJob.js";
+export {
   detectDownstreamConflictsSqlite,
   detectDownstreamConflictsPg,
   type DownstreamConflictAlert,
