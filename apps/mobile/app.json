@@ -1,7 +1,8 @@
 {
   "expo": {
     "name": "mobile",
-    "slug": "mobile",
+    "slug": "smb-commerce-os",
+    "owner": "hbarraless-team",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -18,7 +19,10 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "os.smbcommerce.mobile"
+      "package": "os.smbcommerce.mobile",
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -38,6 +42,11 @@
           "cameraPermission": "Staff use the camera to photograph an item's condition at rental checkout and check-in. Photos are attached to the order's condition report only."
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "a664e467-49e9-413b-813a-797c885ad495"
+      }
+    }
   }
 }

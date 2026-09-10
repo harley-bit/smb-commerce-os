@@ -12,7 +12,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
-    "test:isolation": "echo \"@smb-os/mobile: no isolation suite yet\""
+    "test:isolation": "echo \"@smb-os/mobile: no isolation suite yet\"",
+    "eas-build-post-install": "cd ../.. && pnpm turbo run build --filter=\"@smb-os/mobile^...\""
   },
   "dependencies": {
     "@smb-os/contracts": "workspace:*",
