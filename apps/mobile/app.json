@@ -33,6 +33,9 @@
         {
           "ios": {
             "useFrameworks": "dynamic"
+          },
+          "android": {
+            "usesCleartextTraffic": true
           }
         }
       ],

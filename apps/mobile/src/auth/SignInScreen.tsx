@@ -40,12 +40,16 @@ export function SignInScreen({ onSignedIn }: SignInScreenProps): React.JSX.Eleme
 
   async function handleSignIn(): Promise<void> {
     setStatus({ kind: "loading" });
-    const result = await signIn(deps, email, password, mfaCode || undefined);
-    if (result.ok) {
-      setStatus({ kind: "signedIn" });
-      onSignedIn?.();
-    } else {
-      setStatus({ kind: "error", message: result.error });
+    try {
+      const result = await signIn(deps, email, password, mfaCode || undefined);
+      if (result.ok) {
+        setStatus({ kind: "signedIn" });
+        onSignedIn?.();
+      } else {
+        setStatus({ kind: "error", message: result.error });
+      }
+    } catch {
+      setStatus({ kind: "error", message: "Couldn't reach the server. Check your connection and try again." });
     }
   }
 
