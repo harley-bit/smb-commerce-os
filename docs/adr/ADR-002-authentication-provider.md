@@ -2,6 +2,7 @@
 
 **Status:** Accepted (founder decision, 2026-09-07)
 **Supersedes:** the authentication approach assumed in `docs/design/07_security_architecture_and_threat_model.md` ("Authentication" section) and the original D010 card, both of which assumed a managed identity provider (Cognito/Auth0/Clerk) from Phase 0.
+**See also:** `ADR-003-social-login.md` — direct Google/Apple OAuth was added ahead of the Auth0 migration this ADR anticipates, for a real near-term need (mobile sign-in parity). This ADR's "Auth0 later" stance is unchanged; ADR-003 is additive, not a supersession.
 
 ## Decision
 
