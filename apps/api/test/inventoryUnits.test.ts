@@ -451,14 +451,19 @@ describe("inventory unit endpoints", () => {
 
       const reservations = new ReservationRepository(fx.connection);
       const ctx = createTenantContext(fx.merchantId);
+      // Relative to the real clock: the route decides "active" against wall-clock `now`,
+      // so fixed dates silently flipped this to AVAILABLE once the calendar passed endsAt.
+      const DAY_MS = 24 * 60 * 60 * 1000;
+      const startsAt = new Date(Date.now() - 9 * DAY_MS).toISOString();
+      const endsAt = new Date(Date.now() + 1 * DAY_MS).toISOString();
       reservations.create(ctx, {
         subjectType: "INVENTORY_UNIT",
         subjectId: unitId,
-        startsAt: "2026-09-01T09:00:00.000Z",
-        endsAt: "2026-09-10T10:00:00.000Z",
+        startsAt,
+        endsAt,
         quantity: 1,
         state: "IN_USE",
-        createdAt: "2026-09-01T08:45:00.000Z",
+        createdAt: new Date(Date.now() - 9 * DAY_MS - 15 * 60 * 1000).toISOString(),
       });
 
       const listRes = await fx.app.inject({
@@ -468,7 +473,7 @@ describe("inventory unit endpoints", () => {
       });
       const units = listRes.json() as Array<{ id: string; rentalStatus: string; returnDueAt: string | null }>;
       const unit = units.find((u) => u.id === unitId);
-      expect(unit).toMatchObject({ rentalStatus: "OUT_ON_RENTAL", returnDueAt: "2026-09-10T10:00:00.000Z" });
+      expect(unit).toMatchObject({ rentalStatus: "OUT_ON_RENTAL", returnDueAt: endsAt });
     });
 
     it("a unit with no active reservation lists as AVAILABLE with no return date", async () => {

@@ -90,7 +90,10 @@ async function setupBase(): Promise<Base> {
     connection,
     merchantId,
     orderLineId,
-    depositHoldProvider: new SimulatedDepositHoldProvider(() => new Date(CREATED_AT), 7),
+    // Real clock, not the fixed CREATED_AT: the provider's 7-day window is measured from
+    // its clock, and the route classifies against wall-clock `now` — a fixed date silently
+    // turned every HELD assertion into EXPIRING_SOON once the calendar passed CREATED_AT + 7d.
+    depositHoldProvider: new SimulatedDepositHoldProvider(() => new Date(), 7),
   };
 }
 
