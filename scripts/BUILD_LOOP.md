@@ -1,6 +1,6 @@
 # Running the token-maxing build loop
 
-> **⏸ PAUSED 2026-09-22 (founder instruction).** The `com.smbcos.buildloop` LaunchAgent is unloaded. Do not re-bootstrap it or run this script until the founder says to resume. Resume: `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.smbcos.buildloop.plist` (plist still in place, worktree path `~/dev/smb-commerce-os-loop`). See the banner in `docs/BUILD_STATE.md`.
+> **⏸ PAUSED 2026-09-22 (founder instruction).** The `com.smbcos.buildloop` LaunchAgent is unloaded. Do not re-bootstrap it or run this script until the founder says to resume. Resume: **first** push local `main` to GitHub (400 unpushed commits at pause time; `main` is PR-protected, so push to a `loop/*` branch and open a PR), **then** `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.smbcos.buildloop.plist` (plist still in place, worktree path `~/dev/smb-commerce-os-loop`). Full ordered checklist in the banner in `docs/BUILD_STATE.md`. Known gap: this loop commits locally and never pushes — fix that before running it unattended again.
 
 `scripts/run_build_loop.py` drives Claude Code through cards back-to-back. It
 does not implement the build protocol itself — CLAUDE.md already tells Claude
