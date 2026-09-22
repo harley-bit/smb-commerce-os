@@ -1,5 +1,7 @@
 # Running the token-maxing build loop
 
+> **⏸ PAUSED 2026-09-22 (founder instruction).** The `com.smbcos.buildloop` LaunchAgent is unloaded. Do not re-bootstrap it or run this script until the founder says to resume. Resume: `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.smbcos.buildloop.plist` (plist still in place, worktree path `~/dev/smb-commerce-os-loop`). See the banner in `docs/BUILD_STATE.md`.
+
 `scripts/run_build_loop.py` drives Claude Code through cards back-to-back. It
 does not implement the build protocol itself — CLAUDE.md already tells Claude
 how to run a card, log it, update the calendar, and commit. The script's only

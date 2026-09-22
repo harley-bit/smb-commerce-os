@@ -1,5 +1,7 @@
 # SMB Commerce OS — Working Rules for Claude
 
+> **⏸ PROJECT PAUSED — 2026-09-22, founder instruction.** All development work is stopped. The hourly build-loop launchd agent has been unloaded. Do not run cards, move the pointer, or change code/docs here unless the human operator explicitly says the project is resumed in the current message. The pause banner in `docs/BUILD_STATE.md` has the resume steps. Answering questions about the repo is fine; building is not.
+
 This file is read at the start of every session in this repo. It exists to keep sessions focused and to make the build delegable across gaps.
 
 ## Context boundary — read this first
