@@ -37,7 +37,9 @@ those are safe to paper over automatically.
 
 ## What's actually scheduled right now
 
-A LaunchAgent at `~/Library/LaunchAgents/com.smbcos.buildloop.plist` fires
+**Nothing, by founder rule (2026-11-02): no automatic or hourly runs — one card at a time, by hand, only when the founder asks.** Run `python3 scripts/run_build_loop.py --once` from a Terminal.app window (not a headless shell — see the TCC note below), watch it finish, report the outcome, stop. The LaunchAgent described next is **disabled** (`launchctl disable`d, plist parked at `~/Library/LaunchAgents.disabled/com.smbcos.buildloop.plist`); do not bootstrap it or use `--auto` without a new explicit instruction. The rest of this section is kept for when that changes.
+
+When enabled, a LaunchAgent at `~/Library/LaunchAgents/com.smbcos.buildloop.plist` fires
 every hour (`StartInterval` 3600) plus once immediately on load
 (`RunAtLoad`). It runs **only** `/usr/bin/osascript`, telling Terminal to open
 a window and run `scripts/open_build_loop_terminal.sh` inside it.
