@@ -18,20 +18,20 @@
   "dependencies": {
     "@smb-os/contracts": "workspace:*",
     "@smb-os/domain": "workspace:*",
-    "expo": "~57.0.21",
-    "expo-build-properties": "^57.0.17",
-    "expo-crypto": "~57.0.2",
-    "expo-image-picker": "~57.0.16",
-    "expo-secure-store": "~57.0.3",
+    "expo": "~57.0.31",
+    "expo-build-properties": "^57.0.22",
+    "expo-crypto": "~57.0.4",
+    "expo-image-picker": "~57.0.20",
+    "expo-secure-store": "~57.0.4",
     "expo-status-bar": "~57.0.1",
     "react": "19.2.3",
     "react-native": "0.86.3",
-    "zod": "^4.1.13"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@smb-os/eslint-config": "workspace:*",
-    "@types/react": "~19.2.2",
-    "eslint": "^10.10.0",
+    "@types/react": "~19.2.18",
+    "eslint": "^10.14.0",
     "typescript": "~6.0.3",
     "vitest": "^3.2.7"
   }
