@@ -61,8 +61,15 @@ describe("PostgreSQL dialect job (docs/design/04 CI matrix)", () => {
     expect(workflow).toMatch(/DATABASE_URL:\s*postgres:\/\//);
   });
 
-  it("runs the db package's test suite against the postgres service", () => {
+  it("runs the db package's test suite against the postgres service, through turbo", () => {
+    // Through turbo, not `pnpm --filter @smb-os/db test`: turbo.json's
+    // `test.dependsOn: ["^build"]` is what builds `@smb-os/domain`'s `dist/`
+    // first. The bypass made every db test file fail to resolve
+    // `@smb-os/domain` the first time this job actually ran (PR #7,
+    // 2026-11-02) — it had never executed on GitHub between D014 and then.
     const workflow = readWorkflow();
-    expect(workflow).toMatch(/pnpm --filter @smb-os\/db test/);
+    const job = workflow.slice(workflow.indexOf("test-postgres:"));
+    expect(job).not.toMatch(/pnpm --filter @smb-os\/db test/);
+    expect(job).toMatch(/pnpm turbo run test --filter=@smb-os\/db/);
   });
 });

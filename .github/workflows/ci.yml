@@ -118,5 +118,9 @@ jobs:
       - name: Install dependencies (frozen lockfile)
         run: pnpm install --frozen-lockfile
 
+      # Through turbo, not `pnpm --filter ... test`: turbo.json's
+      # `test.dependsOn: ["^build"]` is what builds `@smb-os/domain`'s
+      # `dist/` first. Bypassing it made every db test file fail to resolve
+      # `@smb-os/domain` the first time this job actually ran (PR #7).
       - name: Test against PostgreSQL
-        run: pnpm --filter @smb-os/db test
+        run: pnpm turbo run test --filter=@smb-os/db

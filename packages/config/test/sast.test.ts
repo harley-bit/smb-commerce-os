@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -14,6 +14,23 @@ function readWorkflow(): string {
 
 let scratchDir: string | undefined;
 
+// Async on purpose: each semgrep scan takes ~20s. A synchronous
+// `spawnSync` blocks the vitest worker's event loop for that long, so
+// vitest's RPC (`onTaskUpdate`) times out and the run is marked failed
+// even though every test passed — exactly what happened in CI on PR #7.
+function semgrep(args: string[], cwd: string): Promise<{ status: number; output: string }> {
+  return new Promise((resolve) => {
+    execFile("semgrep", args, { cwd, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }, (error, stdout, stderr) => {
+      if (error) {
+        const err = error as { code?: number | string };
+        resolve({ status: typeof err.code === "number" ? err.code : 1, output: `${stdout}${stderr}` });
+        return;
+      }
+      resolve({ status: 0, output: `${stdout}${stderr}` });
+    });
+  });
+}
+
 afterEach(() => {
   if (scratchDir) {
     rmSync(scratchDir, { recursive: true, force: true });
@@ -22,7 +39,7 @@ afterEach(() => {
 });
 
 describe("static analysis (semgrep)", () => {
-  it("fails (--error) on a fixture with a known high-severity, blocking finding", () => {
+  it("fails (--error) on a fixture with a known high-severity, blocking finding", async () => {
     // Command injection via unsanitized input into child_process.exec — a
     // real blocking rule (javascript.lang.security.detect-child-process),
     // planted here the same way D006/D007 plant a fake secret / vulnerable dep.
@@ -39,32 +56,25 @@ describe("static analysis (semgrep)", () => {
       ].join("\n"),
     );
 
-    const scan = spawnSync("semgrep", ["scan", "--config", "p/security-audit", "--error", "."], {
-      cwd: scratchDir,
-      encoding: "utf8",
-    });
+    const scan = await semgrep(["scan", "--config", "p/security-audit", "--error", "."], scratchDir);
 
     expect(scan.status).not.toBe(0);
-    expect(`${scan.stdout}${scan.stderr}`).toMatch(/blocking/i);
+    expect(scan.output).toMatch(/blocking/i);
   }, 60_000);
 
-  it("passes clean on a fixture with no findings", () => {
+  it("passes clean on a fixture with no findings", async () => {
     scratchDir = mkdtempSync(join(tmpdir(), "sast-clean-"));
     writeFileSync(join(scratchDir, "clean.js"), "function add(a, b) {\n  return a + b;\n}\nmodule.exports = { add };\n");
 
-    const scan = spawnSync("semgrep", ["scan", "--config", "p/security-audit", "--error", "."], {
-      cwd: scratchDir,
-      encoding: "utf8",
-    });
+    const scan = await semgrep(["scan", "--config", "p/security-audit", "--error", "."], scratchDir);
 
     expect(scan.status).toBe(0);
   }, 60_000);
 
-  it("passes clean on this repo's own source tree", () => {
-    const scan = spawnSync(
-      "semgrep",
+  it("passes clean on this repo's own source tree", async () => {
+    const scan = await semgrep(
       ["scan", "--config", "p/security-audit", "--error", "--exclude", "node_modules", "--exclude", "coverage", "--exclude", "dist", "."],
-      { cwd: repoRoot, encoding: "utf8" },
+      repoRoot,
     );
 
     expect(scan.status).toBe(0);
