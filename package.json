@@ -6,7 +6,7 @@
   "license": "UNLICENSED",
   "packageManager": "pnpm@12.3.4",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "build": "turbo run build",
