@@ -73,6 +73,8 @@ USAGE_LIMIT_MARKERS = (
     "limit reached",
 )
 
+PUSH_BRANCH = os.environ.get("LOOP_PUSH_BRANCH", "loop/main")  # remote branch every card's commits are pushed to
+
 EXIT_OK = 0
 EXIT_USAGE_LIMIT = 75   # transient: reschedule and retry later
 EXIT_STALLED = 3        # card ran but did not advance: needs a human look
@@ -335,6 +337,26 @@ def looks_like_usage_limit(output: str) -> bool:
     return any(marker in lowered for marker in USAGE_LIMIT_MARKERS)
 
 
+def push_progress() -> None:
+    """Push everything committed so far to origin/PUSH_BRANCH (never main, which
+    is PR-protected). Root cause of the 2026-09-22 pause finding: the loop
+    committed locally for ~400 commits and never pushed, so the whole build
+    existed on one Mac. Called after every card regardless of outcome, since
+    Carried re-checks also produce docs-only commits. Non-fatal: a failed push
+    (network, or the pre-push audit/semgrep hook refusing) is logged loudly and
+    the next card's push retries it, because the commits are still local."""
+    result = subprocess.run(
+        ["git", "push", "origin", f"HEAD:refs/heads/{PUSH_BRANCH}"],
+        cwd=REPO, capture_output=True, text=True,
+    )
+    if result.returncode == 0:
+        log(f"Pushed HEAD to origin/{PUSH_BRANCH}.")
+    else:
+        tail = (result.stderr or result.stdout).strip().splitlines()[-3:]
+        log(f"WARNING: push to origin/{PUSH_BRANCH} failed (exit {result.returncode}); "
+            f"commits are still local only. " + " | ".join(tail))
+
+
 def run_one_card(sleep_after: int) -> int:
     if working_tree_dirty():
         log(
@@ -377,6 +399,7 @@ def run_one_card(sleep_after: int) -> int:
                 f"check manually."
             )
         record_card_timing(before, elapsed)
+        push_progress()
         if sleep_after > 0:
             time.sleep(sleep_after)
         return EXIT_OK
@@ -386,6 +409,7 @@ def run_one_card(sleep_after: int) -> int:
         if healed is not None:
             log(f"{before} -> Done (pointer self-healed). Next card: {healed}. ({elapsed:.0f}s)")
             record_card_timing(before, elapsed)
+            push_progress()
             if sleep_after > 0:
                 time.sleep(sleep_after)
             return EXIT_OK
@@ -394,6 +418,7 @@ def run_one_card(sleep_after: int) -> int:
         log(f"claude exited {returncode} and {before} did not advance ({elapsed:.0f}s). Stalled.")
     else:
         log(f"{before} did not advance (Carried or Blocked, per its log). Stopping. ({elapsed:.0f}s)")
+    push_progress()  # Carried re-checks still commit (docs-only); don't let those pile up locally either
     return EXIT_STALLED
 
 

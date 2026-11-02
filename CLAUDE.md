@@ -1,6 +1,6 @@
 # SMB Commerce OS — Working Rules for Claude
 
-> **⏸ PROJECT PAUSED — 2026-09-22, founder instruction.** All development work is stopped. The hourly build-loop launchd agent has been unloaded. Do not run cards, move the pointer, or change code/docs here unless the human operator explicitly says the project is resumed in the current message. The pause banner in `docs/BUILD_STATE.md` has the resume steps. **When resuming, the first to-do is pushing local `main` (400 commits ahead of `origin/main` at pause time) to a `loop/*` branch on GitHub and opening a PR, before any card runs.** Answering questions about the repo is fine; building is not.
+> **▶ RESUMED 2026-11-02 (founder instruction).** The 2026-09-22 pause is lifted. The 400+ local-only commits are now on GitHub as `loop/main` (PR #7), and `scripts/run_build_loop.py` pushes `HEAD` to `origin/loop/main` after every card, so the build can no longer silently accumulate off-GitHub. `main` stays PR-protected; the loop never pushes to it. See the resume record at the top of `docs/BUILD_STATE.md`.
 
 This file is read at the start of every session in this repo. It exists to keep sessions focused and to make the build delegable across gaps.
 
