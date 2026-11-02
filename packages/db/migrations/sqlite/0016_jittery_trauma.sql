@@ -1,0 +1,1 @@
+ALTER TABLE `payments` ADD `last_event_at` text;

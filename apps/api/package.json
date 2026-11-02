@@ -11,23 +11,26 @@
     "lint": "eslint .",
     "test": "vitest run --coverage",
     "test:isolation": "echo \"@smb-os/api: no isolation suite yet\"",
-    "dev": "echo \"@smb-os/api: no dev server yet\""
+    "dev": "tsx watch src/serve.ts",
+    "start": "node dist/serve.js"
   },
   "dependencies": {
-    "@fastify/cookie": "^11.1.2",
-    "@node-rs/argon2": "^2.2.0",
+    "@fastify/cookie": "^11.1.5",
+    "@fastify/cors": "^11.3.1",
+    "@node-rs/argon2": "^2.2.2",
     "@smb-os/contracts": "workspace:*",
     "@smb-os/db": "workspace:*",
     "@smb-os/domain": "workspace:*",
-    "fastify": "^5.12.3",
+    "fastify": "^5.12.7",
     "otpauth": "^9.5.2"
   },
   "devDependencies": {
     "@smb-os/eslint-config": "workspace:*",
-    "@types/node": "^26.4.1",
+    "@types/node": "^26.6.6",
     "@vitest/coverage-v8": "^3.2.7",
-    "eslint": "^10.10.0",
-    "typescript": "^5.7.2",
+    "eslint": "^10.14.0",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
     "vitest": "^3.2.7"
   }
 }

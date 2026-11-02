@@ -2,11 +2,11 @@
   "name": "smb-commerce-os",
   "private": true,
   "version": "0.0.0",
-  "description": "SMB Commerce OS — unified products, services, and rentals platform",
+  "description": "SMB Commerce OS \u2014 unified products, services, and rentals platform",
   "license": "UNLICENSED",
   "packageManager": "pnpm@12.3.4",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "build": "turbo run build",
@@ -14,14 +14,16 @@
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "test:isolation": "turbo run test:isolation",
+    "test:e2e": "turbo run test:e2e",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "dev": "turbo run dev",
     "prepare": "git config core.hooksPath .githooks"
   },
   "devDependencies": {
-    "prettier": "^3.9.6",
-    "turbo": "^2.3.3",
-    "typescript": "^5.7.2"
+    "node-gyp": "^12.4.0",
+    "prettier": "^3.9.10",
+    "turbo": "^2.11.10",
+    "typescript": "^5.9.3"
   }
 }

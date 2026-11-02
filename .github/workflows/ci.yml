@@ -26,7 +26,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           cache: pnpm
 
       - name: Install gitleaks
@@ -76,3 +76,51 @@ jobs:
           name: sbom
           path: sbom.json
           retention-days: 90
+
+  # PostgreSQL dialect job — docs/design/04's portability rules are a CI
+  # failure, not a code review comment: this runs the db package's suite
+  # against a real PostgreSQL service container so a migration or query
+  # that only works on SQLite is caught the day it's written. The `build`
+  # job above already covers the SQLite dialect (DATABASE_URL unset there,
+  # so packages/db's PostgreSQL-only tests skip and its SQLite tests run).
+  test-postgres:
+    name: test (postgresql)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: smb_os
+          POSTGRES_PASSWORD: smb_os
+          POSTGRES_DB: smb_os_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgres://smb_os:smb_os@localhost:5432/smb_os_test
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+
+      - name: Install dependencies (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+
+      # Through turbo, not `pnpm --filter ... test`: turbo.json's
+      # `test.dependsOn: ["^build"]` is what builds `@smb-os/domain`'s
+      # `dist/` first. Bypassing it made every db test file fail to resolve
+      # `@smb-os/domain` the first time this job actually ran (PR #7).
+      - name: Test against PostgreSQL
+        run: pnpm turbo run test --filter=@smb-os/db

@@ -1,18 +1,39 @@
 packages:
   - "apps/*"
   - "packages/*"
+  - "e2e"
 allowBuilds:
+  better-sqlite3: true
   esbuild: true
 overrides:
   vite: "^6.4.3"
+  postcss: "^8.5.18"
+  "zod@<4": ">=4.6.6"
 minimumReleaseAgeExclude:
-  - "@typescript-eslint/eslint-plugin@8.70.0"
-  - "@typescript-eslint/parser@8.70.0"
-  - "@typescript-eslint/project-service@8.70.0"
-  - "@typescript-eslint/scope-manager@8.70.0"
-  - "@typescript-eslint/tsconfig-utils@8.70.0"
-  - "@typescript-eslint/type-utils@8.70.0"
-  - "@typescript-eslint/types@8.70.0"
-  - "@typescript-eslint/typescript-estree@8.70.0"
-  - "@typescript-eslint/utils@8.70.0"
-  - "@typescript-eslint/visitor-keys@8.70.0"
+  - '@typescript-eslint/eslint-plugin@8.70.0'
+  - '@typescript-eslint/parser@8.70.0'
+  - '@typescript-eslint/project-service@8.70.0'
+  - '@typescript-eslint/scope-manager@8.70.0'
+  - '@typescript-eslint/tsconfig-utils@8.70.0'
+  - '@typescript-eslint/type-utils@8.70.0'
+  - '@typescript-eslint/types@8.70.0'
+  - '@typescript-eslint/typescript-estree@8.70.0'
+  - '@typescript-eslint/utils@8.70.0'
+  - '@typescript-eslint/visitor-keys@8.70.0'
+  - '@expo/cli@57.0.23'
+  - '@expo/metro-file-map@57.0.3'
+  - babel-preset-expo@57.0.11
+  - expo-modules-core@57.0.17
+  - expo-modules-jsi@57.1.0
+  - expo@57.0.21
+# Explicitly accepted audit findings (the pre-push hook's "fix or explicitly accept").
+# Both are tinypool prototype-pollution gadgets, fixed only in tinypool >=2.1.2, while
+# vitest 3.2.x (our test runner) pins tinypool ^1.1.1 — overriding it to 2.x crashed
+# vitest's worker IPC in CI ("Channel closed", 2026-11-02). tinypool is a devDependency-only
+# test worker pool; the gadget needs attacker-controlled worker options inside the test
+# process, which already implies code execution. Remove these entries when vitest is
+# upgraded to a line that depends on tinypool >=2.1.2 (see IMPROVEMENTS.md, 2026-11-02).
+auditConfig:
+  ignoreGhsas:
+    - GHSA-5gmw-xhrv-c9v3
+    - GHSA-85c8-ppgw-ccpr

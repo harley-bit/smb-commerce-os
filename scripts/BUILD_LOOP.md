@@ -1,5 +1,7 @@
 # Running the token-maxing build loop
 
+> **Resumed 2026-11-02.** The loop now pushes after every card: `run_build_loop.py` runs `git push origin HEAD:refs/heads/loop/main` (branch name overridable with `LOOP_PUSH_BRANCH`) after a Done card, a self-healed card, and a Carried/stalled card alike, because Carried re-checks also commit. `main` is PR-protected and is never pushed to directly; merge `loop/main` into `main` through its standing PR (#7) when you want to. A failed push (network, or the repo's own pre-push `pnpm audit`/`semgrep` hook refusing) is a logged WARNING, not a stop — the commits stay local and the next card's push retries. If you see that warning repeat, fix the audit finding by hand; do not let the loop run unattended for days with it failing, which is exactly how 400 commits ended up on one Mac before the 2026-09-22 pause.
+
 `scripts/run_build_loop.py` drives Claude Code through cards back-to-back. It
 does not implement the build protocol itself — CLAUDE.md already tells Claude
 how to run a card, log it, update the calendar, and commit. The script's only
@@ -9,7 +11,7 @@ current-card pointer actually moved, and repeat until something stops it.
 ## Run it by hand
 
 ```bash
-cd "/Users/harleybarrales/Documents/Git Code Base/smb-commerce-os"
+cd "/Users/harleybarrales/dev/smb-commerce-os"
 python3 scripts/run_build_loop.py            # run until the usage limit hits or a card stalls
 python3 scripts/run_build_loop.py --once     # exactly one card, then stop
 python3 scripts/run_build_loop.py --max-cards 3
@@ -35,7 +37,9 @@ those are safe to paper over automatically.
 
 ## What's actually scheduled right now
 
-A LaunchAgent at `~/Library/LaunchAgents/com.smbcos.buildloop.plist` fires
+**Nothing, by founder rule (2026-11-02): no automatic or hourly runs — one card at a time, by hand, only when the founder asks.** Run `python3 scripts/run_build_loop.py --once` from a Terminal.app window (not a headless shell — see the TCC note below), watch it finish, report the outcome, stop. The LaunchAgent described next is **disabled** (`launchctl disable`d, plist parked at `~/Library/LaunchAgents.disabled/com.smbcos.buildloop.plist`); do not bootstrap it or use `--auto` without a new explicit instruction. The rest of this section is kept for when that changes.
+
+When enabled, a LaunchAgent at `~/Library/LaunchAgents/com.smbcos.buildloop.plist` fires
 every hour (`StartInterval` 3600) plus once immediately on load
 (`RunAtLoad`). It runs **only** `/usr/bin/osascript`, telling Terminal to open
 a window and run `scripts/open_build_loop_terminal.sh` inside it.

@@ -7,7 +7,7 @@
 
 set -uo pipefail
 
-REPO_DIR="/Users/harleybarrales/Documents/Git Code Base/smb-commerce-os"
+REPO_DIR="/Users/harleybarrales/dev/smb-commerce-os"
 
 export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 

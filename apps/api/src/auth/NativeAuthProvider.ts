@@ -1,31 +1,60 @@
-import { randomBytes, createHash, randomUUID } from "node:crypto";
+import { randomBytes, createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import { Algorithm, hash as argon2Hash, verify as argon2Verify } from "@node-rs/argon2";
 import { Secret, TOTP } from "otpauth";
 import {
   AccountLockedError,
   EmailAlreadyRegisteredError,
+  InvalidAuthorizationCodeError,
   InvalidCredentialsError,
   InvalidMfaCodeError,
+  InvalidRefreshTokenError,
   InvalidResetTokenError,
   MfaCodeRequiredError,
   MfaEnrollmentRequiredError,
+  PkceVerificationFailedError,
+  type AuthIdentity,
+  type AuthorizationCodeGrant,
   type AuthProvider,
   type AuthResult,
   type MfaEnrollment,
+  type MobileTokenPair,
   type Session,
-  type TenantContext,
 } from "@smb-os/domain";
 import { AccountBackoff } from "./rateLimiter.js";
-import type { ResetTokenRepository, SessionRepository, UserRepository } from "./repositories.js";
+import {
+  InMemoryAuthorizationCodeRepository,
+  InMemoryRefreshTokenRepository,
+  type AuthorizationCodeRepository,
+  type RefreshTokenRepository,
+  type ResetTokenRepository,
+  type SessionRepository,
+  type UserRepository,
+} from "./repositories.js";
 
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // 24h
 const RESET_TOKEN_TTL_MS = 30 * 60 * 1000; // 30 minutes, per ADR-002
+const AUTHORIZATION_CODE_TTL_MS = 2 * 60 * 1000; // 2 minutes — RFC 7636 codes are meant to be redeemed immediately
+const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days — mobile session lifetime (D138)
 const MFA_ISSUER = "SMB Commerce OS";
 /** Roles that ADR-002 / `docs/design/07` mandate TOTP MFA for. */
 const MFA_REQUIRED_ROLES = new Set(["OWNER", "ADMIN"]);
 
 function sha256Hex(value: string): string {
   return createHash("sha256").update(value).digest("hex");
+}
+
+/** RFC 7636 `S256`: `BASE64URL(SHA256(code_verifier))`. */
+function pkceS256Challenge(codeVerifier: string): string {
+  return createHash("sha256").update(codeVerifier).digest("base64url");
+}
+
+function constantTimeEqual(a: string, b: string): boolean {
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) {
+    return false;
+  }
+  return timingSafeEqual(bufA, bufB);
 }
 
 function buildTotp(secretBase32: string, email: string): TOTP {
@@ -62,6 +91,12 @@ export class NativeAuthProvider implements AuthProvider {
     // Real email delivery is out of scope for this card; defaults to a
     // no-op so the raw token is never persisted or logged anywhere.
     private readonly notifyResetToken: ResetTokenNotifier = () => undefined,
+    // `docs/cards/D138.md` — mobile PKCE authorization codes and refresh
+    // tokens. Optional constructor params (defaulting to fresh in-memory
+    // repositories) so every existing `new NativeAuthProvider(...)` call
+    // site that predates D138 keeps compiling unchanged.
+    private readonly authorizationCodes: AuthorizationCodeRepository = new InMemoryAuthorizationCodeRepository(),
+    private readonly refreshTokens: RefreshTokenRepository = new InMemoryRefreshTokenRepository(),
   ) {}
 
   async register(email: string, password: string): Promise<AuthResult> {
@@ -170,7 +205,7 @@ export class NativeAuthProvider implements AuthProvider {
     };
   }
 
-  async verifySession(token: string): Promise<TenantContext | null> {
+  async verifySession(token: string): Promise<AuthIdentity | null> {
     const record = await this.sessions.findByToken(token);
     if (!record || record.revokedAt !== null) {
       return null;
@@ -223,5 +258,81 @@ export class NativeAuthProvider implements AuthProvider {
     const passwordHash = await argon2Hash(newPassword, { algorithm: Algorithm.Argon2id });
     await this.users.updatePasswordHash(record.userId, passwordHash);
     await this.resetTokens.markUsed(tokenHash, new Date().toISOString());
+  }
+
+  async createAuthorizationCode(
+    userId: string,
+    codeChallenge: string,
+    codeChallengeMethod: "S256",
+  ): Promise<AuthorizationCodeGrant> {
+    const code = randomBytes(32).toString("hex");
+    const createdAt = new Date();
+    const expiresAt = new Date(createdAt.getTime() + AUTHORIZATION_CODE_TTL_MS);
+    await this.authorizationCodes.create({
+      codeHash: sha256Hex(code),
+      userId,
+      codeChallenge,
+      codeChallengeMethod,
+      createdAt: createdAt.toISOString(),
+      expiresAt: expiresAt.toISOString(),
+      usedAt: null,
+    });
+    return { code, expiresAt: expiresAt.toISOString() };
+  }
+
+  async exchangeAuthorizationCode(
+    code: string,
+    codeVerifier: string,
+    ip: string,
+    userAgent: string,
+  ): Promise<MobileTokenPair> {
+    const record = await this.authorizationCodes.findByCodeHash(sha256Hex(code));
+    if (!record || record.usedAt !== null || new Date(record.expiresAt).getTime() <= Date.now()) {
+      throw new InvalidAuthorizationCodeError();
+    }
+    // Single-use regardless of outcome: a wrong verifier still burns the code,
+    // so a leaked code can't be brute-forced against multiple verifier guesses.
+    await this.authorizationCodes.markUsed(record.codeHash, new Date().toISOString());
+    if (!constantTimeEqual(pkceS256Challenge(codeVerifier), record.codeChallenge)) {
+      throw new PkceVerificationFailedError();
+    }
+    return this.issueMobileTokenPair(record.userId, ip, userAgent);
+  }
+
+  async refreshMobileSession(refreshToken: string, ip: string, userAgent: string): Promise<MobileTokenPair> {
+    const record = await this.refreshTokens.findByTokenHash(sha256Hex(refreshToken));
+    if (!record || record.revokedAt !== null || new Date(record.expiresAt).getTime() <= Date.now()) {
+      throw new InvalidRefreshTokenError();
+    }
+    // Rotate: the presented refresh token is revoked immediately, so a
+    // captured-and-replayed old token can never mint a second live pair.
+    await this.refreshTokens.revoke(record.tokenHash, new Date().toISOString());
+    return this.issueMobileTokenPair(record.userId, ip, userAgent);
+  }
+
+  async revokeMobileSession(refreshToken: string): Promise<void> {
+    await this.refreshTokens.revoke(sha256Hex(refreshToken), new Date().toISOString());
+  }
+
+  private async issueMobileTokenPair(userId: string, ip: string, userAgent: string): Promise<MobileTokenPair> {
+    const session = await this.createSession(userId, ip, userAgent);
+    const refreshToken = randomBytes(32).toString("hex");
+    const createdAt = new Date();
+    const refreshTokenExpiresAt = new Date(createdAt.getTime() + REFRESH_TOKEN_TTL_MS);
+    await this.refreshTokens.create({
+      tokenHash: sha256Hex(refreshToken),
+      userId,
+      createdAt: createdAt.toISOString(),
+      expiresAt: refreshTokenExpiresAt.toISOString(),
+      revokedAt: null,
+      ip,
+      userAgent,
+    });
+    return {
+      accessToken: session.token,
+      accessTokenExpiresAt: session.expiresAt,
+      refreshToken,
+      refreshTokenExpiresAt: refreshTokenExpiresAt.toISOString(),
+    };
   }
 }

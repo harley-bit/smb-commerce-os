@@ -73,6 +73,7 @@ The business context — market, pricing, geography, monetization — lives else
 | D2  | Confirm build cadence               | **Claude executes continuously (token-maxing)**, not a fixed days/week human cadence                                                               |
 | D3  | Mobile in MVP or post-pilot         | **Deferred to Phase 8**, post-web-MVP                                                                                                              |
 | D4  | Identity provider                   | **Native auth now, Auth0-ready interface, Auth0 wired in later** — see `docs/adr/ADR-002-authentication-provider.md`, which also rewrote card D010 |
+| D5  | Mobile social login                 | **Direct Google/Apple OAuth now, ahead of Auth0; OAuth sessions skip native MFA** — see `docs/adr/ADR-003-social-login.md`, cards D200/D201                |
 
 ## Principles
 

@@ -1,6 +1,53 @@
+import { randomUUID } from "node:crypto";
+import type { Writable } from "node:stream";
 import cookie from "@fastify/cookie";
-import Fastify, { type FastifyInstance } from "fastify";
+import cors from "@fastify/cors";
+import Fastify, { type FastifyError, type FastifyInstance } from "fastify";
 import type { AuthProvider } from "@smb-os/domain";
+import {
+  AvailabilityCache,
+  HmacMediaUploadProvider,
+  SimulatedConnectAccountProvider,
+  SimulatedDepositHoldProvider,
+  SimulatedPaymentIntentProvider,
+  SimulatedRefundProvider,
+  createConnection as createDbConnection,
+  type Connection,
+  type PushSender,
+  type ReceiptEmailNotifier,
+  type RoleChangeNotifier,
+} from "@smb-os/db";
+import {
+  defineCancellationPolicySet,
+  type CancellationPolicySet,
+  type ConnectAccountProvider,
+  type DepositHoldProvider,
+  type MediaUploadProvider,
+  type PaymentIntentProvider,
+  type RefundProvider,
+} from "@smb-os/domain";
+import { problemType, sendProblem } from "./problemDetails.js";
+import { registerAvailabilityRoutes } from "./routes/availability.js";
+import { registerPublicStorefrontRoutes } from "./routes/publicStorefront.js";
+import { registerCheckoutPaymentRoutes } from "./routes/checkoutPayment.js";
+import { registerOrderConfirmationRoutes } from "./routes/orderConfirmation.js";
+import { registerCustomerOrderRoutes } from "./routes/customerOrders.js";
+import { registerPushTokenRoutes } from "./routes/pushTokens.js";
+import { registerBookingRoutes } from "./routes/bookings.js";
+import { registerCalendarRoutes } from "./routes/calendar.js";
+import { registerOrderRoutes } from "./routes/orders.js";
+import { registerFulfillmentRoutes } from "./routes/fulfillment.js";
+import { registerDamageClaimRoutes } from "./routes/damageClaims.js";
+import { registerConnectRoutes } from "./routes/connect.js";
+import { registerTeamRoutes } from "./routes/team.js";
+import { registerListingRoutes } from "./routes/listings.js";
+import { registerResourceRoutes } from "./routes/resources.js";
+import { registerLocationRoutes } from "./routes/locations.js";
+import { registerVariantRoutes } from "./routes/variants.js";
+import { registerInventoryUnitRoutes } from "./routes/inventoryUnits.js";
+import { registerMerchantRoutes } from "./routes/merchants.js";
+import { registerWebhookRoutes } from "./routes/webhooks.js";
+import { registerMobileAuthRoutes } from "./routes/mobileAuth.js";
 import {
   AccountLockedError,
   EmailAlreadyRegisteredError,
@@ -12,13 +59,21 @@ import {
 } from "@smb-os/domain";
 import { isAllowedOrigin } from "./auth/originCheck.js";
 import { SlidingWindowRateLimiter } from "./auth/rateLimiter.js";
+import {
+  createDefaultMembershipResolver,
+  registerAuthenticateDecorator,
+  type MerchantMembershipResolver,
+} from "./auth/authenticate.js";
 
 // This is the one file in `apps/api` allowed to name `NativeAuthProvider`
 // (it wires the concrete class to a real `AuthProvider` binding below);
 // every route handler in this file depends only on the `AuthProvider`
 // interface from `@smb-os/domain`.
 import { NativeAuthProvider, type ResetTokenNotifier } from "./auth/NativeAuthProvider.js";
+import { extractSessionToken } from "./auth/sessionToken.js";
 import {
+  InMemoryAuthorizationCodeRepository,
+  InMemoryRefreshTokenRepository,
   InMemoryResetTokenRepository,
   InMemorySessionRepository,
   InMemoryUserRepository,
@@ -31,8 +86,158 @@ export interface BuildAppOptions {
   allowedOrigins?: readonly string[];
   loginRateLimit?: { limit: number; windowMs: number };
   resetRateLimit?: { limit: number; windowMs: number };
+  /** `docs/cards/D138.md` — rate limit for `POST /auth/mobile/authorize` (takes credentials, same posture as `/auth/login`). */
+  mobileAuthRateLimit?: { limit: number; windowMs: number };
+  availabilityRateLimit?: { limit: number; windowMs: number };
+  /** `docs/cards/D121.md` — rate limit for the public `GET /v1/m/{slug}` and `GET /v1/m/{slug}/listings` storefront routes. */
+  publicCatalogRateLimit?: { limit: number; windowMs: number };
+  /** Injectable for tests that need to write a reservation and observe cache invalidation through the same cache the route reads. */
+  availabilityCache?: AvailabilityCache;
   onResetTokenIssued?: ResetTokenNotifier;
+  /** Test-only hook for asserting on structured log output; production uses stdout. */
+  loggerStream?: Writable | { write: (chunk: string) => void };
+  /** Injectable for tests; defaults to a real but unwired resolver — see `./auth/authenticate.ts`. */
+  merchantMembershipResolver?: MerchantMembershipResolver;
+  /**
+   * `packages/db` connection backing tenant-scoped catalog routes (currently
+   * just `./routes/listings.ts`). Defaults to a fresh in-memory SQLite
+   * connection, migrated lazily on first route call — same honest gap as
+   * `merchantMembershipResolver`'s default: unless a real, shared
+   * connection is passed in, this default is disconnected from whatever
+   * connection (if any) backs the membership resolver, so nothing will
+   * actually resolve as a member in a from-scratch default `buildApp()`.
+   * Real end-to-end DB wiring for `apps/api` is still a future card.
+   */
+  connection?: Connection;
+  /**
+   * `docs/cards/D091.md` — the Stripe webhook signing secret used to verify
+   * `POST /webhooks/stripe`. Defaults to a placeholder in tests/dev; a real
+   * deployment must supply the value from its Stripe Connect webhook
+   * endpoint configuration, never a hardcoded default.
+   */
+  stripeWebhookSecret?: string;
+  /**
+   * `docs/cards/D104.md` — Stripe Connect account provider behind
+   * `./routes/connect.ts`. Defaults to `SimulatedConnectAccountProvider`,
+   * same "native now, real provider later" situation as every other
+   * payments seam in this codebase — no Stripe platform account is
+   * provisioned yet.
+   */
+  connectAccountProvider?: ConnectAccountProvider;
+  /** Base URL of the merchant-facing web app; used to build Connect onboarding's hosted-flow refresh/return URLs. */
+  webBaseUrl?: string;
+  /**
+   * `docs/cards/D116.md` — the HMAC secret behind `./routes/fulfillment.ts`'s
+   * signed condition-media upload grants (`HmacMediaUploadProvider`, D073).
+   * Same "native now, real provider later" placeholder situation as
+   * `stripeWebhookSecret` above — no real object-storage account is
+   * provisioned yet.
+   */
+  conditionMediaUploadSecret?: string;
+  /** Injectable for tests that want to observe or fake the signed-upload provider directly. */
+  mediaUploadProvider?: MediaUploadProvider;
+  /**
+   * `docs/cards/D118.md` — the deposit-hold provider behind
+   * `./routes/damageClaims.ts`'s capture route. Same "native/simulated
+   * now, real provider later" precedent as every other payments seam in
+   * this codebase (D094) — no Stripe platform account is provisioned yet.
+   */
+  depositHoldProvider?: DepositHoldProvider;
+  /**
+   * `docs/cards/D120.md` security check — "role changes audit-logged and
+   * notified to owners". Same optional, default-no-op injected-callback
+   * shape as every other notifier in this codebase (D069, D076, D094) —
+   * fires once per current OWNER, after `./routes/team.ts`'s role
+   * assignment has already been durably audit-logged.
+   */
+  onRoleChanged?: RoleChangeNotifier;
+  /**
+   * `docs/cards/D130.md` — the `PaymentIntentProvider` behind
+   * `./routes/checkoutPayment.ts`. Same "native/simulated now, real
+   * provider later" precedent as every other payments seam in this
+   * codebase (D089) — no Stripe platform account is provisioned yet.
+   */
+  paymentIntentProvider?: PaymentIntentProvider;
+  /** `docs/cards/D130.md` — the platform take rate charged on a storefront checkout; see `./routes/checkoutPayment.ts`. */
+  checkoutTakeRateBasisPoints?: number;
+  publicCheckoutRateLimit?: { limit: number; windowMs: number };
+  /**
+   * `docs/cards/D131.md` deliverable — "emailed receipt". Same optional,
+   * default-no-op injected-callback shape as every other notifier in this
+   * codebase (D069, D076, D094, D120); see `./routes/orderConfirmation.ts`.
+   */
+  onReceiptEmail?: ReceiptEmailNotifier;
+  /**
+   * `docs/cards/D133.md` — the `RefundProvider` behind
+   * `./routes/customerOrders.ts`'s cancellation route. Same "native/simulated
+   * now, real provider later" precedent as every other payments seam in
+   * this codebase (D096) — no Stripe platform account is provisioned yet.
+   */
+  refundProvider?: RefundProvider;
+  /**
+   * `docs/cards/D133.md` — the per-mode `CancellationPolicySet` cancellation
+   * pricing is computed against. No repository persists a merchant's own
+   * configured policy yet (flagged as an open gap since D084/D096), so this
+   * defaults to a placeholder set until that storage exists.
+   */
+  cancellationPolicySet?: CancellationPolicySet;
+  /**
+   * `docs/cards/D148.md` deliverable — "push notifications ... delivered on
+   * both platforms". Same "native/simulated now, real provider later"
+   * precedent as every other delivery-channel seam in this codebase
+   * (D089/D094/D118/D130) — no APNs/FCM account is provisioned yet, so this
+   * defaults to a no-op; the dispatch logic itself (`PushNotificationDispatcher`)
+   * is real and covered by tests, only the actual transport is a stub.
+   */
+  onPushSend?: PushSender;
 }
+
+const REQUEST_ID_HEADER = "x-request-id";
+
+/**
+ * `docs/cards/D133.md` — no merchant-configurable cancellation policy
+ * storage exists yet (flagged since D084/D096), so this is a placeholder
+ * default, not a business decision: full refund up to 24h before start for
+ * services/rentals, no refund after, and a full refund for products
+ * (returns are handled by fulfillment, not this flow).
+ */
+const DEFAULT_CANCELLATION_POLICY_SET: CancellationPolicySet = defineCancellationPolicySet({
+  product: { mode: "PRODUCT", tiers: [{ minHoursBeforeStart: 0, refundPercent: 100 }] },
+  service: {
+    mode: "SERVICE",
+    tiers: [
+      { minHoursBeforeStart: 24, refundPercent: 100 },
+      { minHoursBeforeStart: 0, refundPercent: 0 },
+    ],
+  },
+  rental: {
+    mode: "RENTAL",
+    tiers: [
+      { minHoursBeforeStart: 24, refundPercent: 100 },
+      { minHoursBeforeStart: 0, refundPercent: 0 },
+    ],
+  },
+});
+
+/**
+ * Fields that must never reach a log line, per this card's security
+ * check ("no PII, tokens, or stack traces in logs or responses"):
+ * credentials, session/reset tokens, and cookies (which carry the
+ * session token).
+ */
+const LOG_REDACT_PATHS = [
+  "req.headers.authorization",
+  "req.headers.cookie",
+  "req.body.password",
+  "req.body.newPassword",
+  "req.body.token",
+  "req.body.mfaCode",
+  "req.body.code",
+  "req.body.codeVerifier",
+  "req.body.codeChallenge",
+  "req.body.refreshToken",
+  "res.headers['set-cookie']",
+];
 
 /** Default, in-memory-backed native provider — see `./auth/repositories.ts`. */
 export function createDefaultAuthProvider(onResetTokenIssued?: ResetTokenNotifier): AuthProvider {
@@ -41,6 +246,8 @@ export function createDefaultAuthProvider(onResetTokenIssued?: ResetTokenNotifie
     new InMemorySessionRepository(),
     new InMemoryResetTokenRepository(),
     onResetTokenIssued,
+    new InMemoryAuthorizationCodeRepository(),
+    new InMemoryRefreshTokenRepository(),
   );
 }
 
@@ -56,8 +263,151 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     options.resetRateLimit?.windowMs ?? 60_000,
   );
 
-  const app = Fastify({ logger: false });
+  const app = Fastify({
+    logger: {
+      level: "info",
+      redact: { paths: LOG_REDACT_PATHS, censor: "[REDACTED]" },
+      ...(options.loggerStream ? { stream: options.loggerStream } : {}),
+    },
+    requestIdHeader: REQUEST_ID_HEADER,
+    genReqId: (request) => {
+      const supplied = request.headers[REQUEST_ID_HEADER];
+      return typeof supplied === "string" && supplied.length > 0 ? supplied : randomUUID();
+    },
+  });
   void app.register(cookie);
+  // `docs/cards/D136.md` — same `allowedOrigins` allowlist `./auth/originCheck.ts`'s
+  // CSRF check reads below; without this, every cross-origin `fetch(...,
+  // { credentials: "include" })` `apps/web` makes is blocked by the
+  // browser itself (no test in this suite ever exercised real CORS —
+  // `app.inject()` bypasses the network stack entirely). An empty
+  // allowlist (every test's default) reflects no origin, matching the
+  // existing default-deny posture.
+  void app.register(cors, {
+    origin: [...allowedOrigins],
+    credentials: true,
+  });
+
+  // `docs/cards/D091.md` — capture the exact raw body alongside the parsed
+  // JSON so `./routes/webhooks.ts` can verify Stripe's signature over the
+  // real bytes received, not a re-serialized copy. Applies to every route
+  // (harmless — `request.body` still parses normally); only the webhook
+  // route reads `request.rawBody`.
+  app.addContentTypeParser("application/json", { parseAs: "string" }, (request, body: string, done) => {
+    request.rawBody = body;
+    if (body.length === 0) {
+      done(null, undefined);
+      return;
+    }
+    try {
+      done(null, JSON.parse(body));
+    } catch (error) {
+      done(error as Error, undefined);
+    }
+  });
+
+  registerAuthenticateDecorator(
+    app,
+    authProvider,
+    options.merchantMembershipResolver ?? createDefaultMembershipResolver(),
+  );
+
+  const connection = options.connection ?? createDbConnection(":memory:");
+  const availabilityCache = options.availabilityCache ?? new AvailabilityCache();
+  registerListingRoutes(app, connection);
+  registerVariantRoutes(app, connection);
+  registerInventoryUnitRoutes(app, connection);
+  registerResourceRoutes(app, connection, availabilityCache);
+  registerLocationRoutes(app, connection);
+  registerMerchantRoutes(app, connection, authProvider);
+  registerAvailabilityRoutes(app, connection, availabilityCache, {
+    rateLimit: options.availabilityRateLimit,
+  });
+  registerPublicStorefrontRoutes(app, connection, {
+    rateLimit: options.publicCatalogRateLimit,
+  });
+  registerCheckoutPaymentRoutes(
+    app,
+    connection,
+    options.paymentIntentProvider ?? new SimulatedPaymentIntentProvider(),
+    {
+      rateLimit: options.publicCheckoutRateLimit,
+      takeRateBasisPoints: options.checkoutTakeRateBasisPoints,
+    },
+  );
+  registerOrderConfirmationRoutes(
+    app,
+    connection,
+    options.onReceiptEmail ?? (() => undefined),
+    { rateLimit: options.publicCheckoutRateLimit },
+    options.onPushSend ?? (() => undefined),
+  );
+  const depositHoldProvider = options.depositHoldProvider ?? new SimulatedDepositHoldProvider();
+  registerCustomerOrderRoutes(
+    app,
+    connection,
+    authProvider,
+    options.refundProvider ?? new SimulatedRefundProvider(),
+    depositHoldProvider,
+    options.cancellationPolicySet ?? DEFAULT_CANCELLATION_POLICY_SET,
+  );
+  registerPushTokenRoutes(app, connection, authProvider);
+  registerBookingRoutes(app, connection, availabilityCache);
+  registerCalendarRoutes(app, connection);
+  registerOrderRoutes(app, connection);
+  registerFulfillmentRoutes(app, connection, {
+    mediaUploadProvider:
+      options.mediaUploadProvider ??
+      new HmacMediaUploadProvider({
+        baseUrl: options.webBaseUrl ?? "http://localhost:3000",
+        secret: options.conditionMediaUploadSecret ?? "condition_media_dev_placeholder",
+      }),
+  });
+  registerDamageClaimRoutes(app, connection, depositHoldProvider);
+  registerWebhookRoutes(app, options.stripeWebhookSecret ?? "whsec_dev_placeholder", connection);
+  registerConnectRoutes(app, connection, options.connectAccountProvider ?? new SimulatedConnectAccountProvider(), {
+    webBaseUrl: options.webBaseUrl ?? "http://localhost:3000",
+  });
+  registerTeamRoutes(app, connection, options.onRoleChanged ?? (() => undefined));
+  registerMobileAuthRoutes(app, authProvider, { rateLimit: options.mobileAuthRateLimit });
+
+  app.addHook("onSend", async (request, reply, payload) => {
+    void reply.header(REQUEST_ID_HEADER, request.id);
+    return payload;
+  });
+
+  app.setNotFoundHandler((request, reply) => {
+    sendProblem(
+      request,
+      reply,
+      404,
+      problemType("not-found"),
+      "Not Found",
+      `No route matches ${request.method} ${request.url}.`,
+    );
+  });
+
+  app.setErrorHandler((error: FastifyError, request, reply) => {
+    const status = typeof error.statusCode === "number" ? error.statusCode : 500;
+    // Deliberately excludes error.message and error.stack from the log line: an
+    // application error's message text is developer-written and not guaranteed
+    // free of secrets, so only the stable, non-sensitive name/code are recorded.
+    request.log.error({ err: { name: error.name, code: error.code } }, "request failed");
+    if (status >= 500) {
+      // Never surface an internal error message or stack trace to the client — this card's security check.
+      sendProblem(request, reply, 500, problemType("internal-server-error"), "Internal Server Error");
+      return;
+    }
+    sendProblem(request, reply, status, problemType("bad-request"), error.name || "Bad Request", error.message);
+  });
+
+  app.get("/health", async () => {
+    return { status: "ok" };
+  });
+
+  app.get("/ready", async () => {
+    return { status: "ready" };
+  });
 
   app.addHook("preHandler", async (request, reply) => {
     const method = request.method.toUpperCase();
@@ -195,7 +545,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   });
 
   app.get("/auth/me", async (request, reply) => {
-    const token = request.cookies[SESSION_COOKIE];
+    const token = extractSessionToken(request);
     const context = token ? await authProvider.verifySession(token) : null;
     if (!context) {
       return reply.code(401).send({ error: "Not authenticated." });

@@ -14,8 +14,8 @@
   },
   "devDependencies": {
     "@smb-os/eslint-config": "workspace:*",
-    "eslint": "^10.10.0",
-    "typescript": "^5.7.2",
+    "eslint": "^10.14.0",
+    "typescript": "^5.9.3",
     "vitest": "^3.2.7"
   }
 }

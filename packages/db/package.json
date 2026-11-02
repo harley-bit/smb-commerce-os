@@ -10,15 +10,24 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint .",
-    "test": "echo \"@smb-os/db: no tests yet\"",
-    "test:isolation": "echo \"@smb-os/db: no isolation suite yet\""
+    "test": "vitest run",
+    "test:isolation": "echo \"@smb-os/db: no isolation suite yet\"",
+    "db:generate:sqlite": "drizzle-kit generate --config=drizzle.config.sqlite.ts",
+    "db:generate:pg": "drizzle-kit generate --config=drizzle.config.pg.ts"
   },
   "dependencies": {
-    "@smb-os/domain": "workspace:*"
+    "@smb-os/domain": "workspace:*",
+    "better-sqlite3": "^13.0.3",
+    "drizzle-orm": "^0.45.4",
+    "pg": "^8.23.1"
   },
   "devDependencies": {
     "@smb-os/eslint-config": "workspace:*",
-    "eslint": "^10.10.0",
-    "typescript": "^5.7.2"
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/pg": "^8.23.1",
+    "drizzle-kit": "^0.31.11",
+    "eslint": "^10.14.0",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.7"
   }
 }

@@ -42,6 +42,8 @@ Not in scope, and not to be built without a written scope change:
 
 **Phase 11 was added 2026-09-08**, after the founder requested a scoped platform-admin/power-user surface (see `16_platform_admin_console.md`). It is placed after Phase 10 specifically so it doesn't renumber any already-built card — it does not gate `G7` or `G10` in the sense that a pilot could launch without it, but Epic A within it (`D177`–`D182`, break-glass access) should land before the pilot has been live long enough to need a real support incident handled. Full rationale, roles, architecture, and workflows: `16`.
 
+**`D198`–`D201` were added 2026-09-10**, after manually testing `D138`'s mobile sign-in surfaced two real gaps: no in-app sign-up screen, and no social login. Placed after `D197` (appended at the tail, not renumbered) even though they're semantically Phase 8 (mobile) work — same non-renumbering discipline as Phase 11 above. Order: `D198` (product-wide UI wireframe review — the founder's explicit "should have started with this" ask, covering every already-built screen across all three surfaces, not just mobile auth), then `D199` (mobile sign-up UI, existing backend), then `D200`/`D201` (direct Google/Apple OAuth, backend then mobile — see `docs/adr/ADR-003-social-login.md` for why direct integration now rather than waiting for ADR-002's Auth0 migration, and for the OAuth-sessions-skip-native-MFA policy decision). None of this blocks `D151`'s remaining store-submission work; the current-card pointer stays on `D151` until that's resolved, with `D198`–`D201` queued after it.
+
 ## Timeline
 
 Dates are driven by the Config sheet in `implementation_calendar/build_calendar.xlsx`.

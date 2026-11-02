@@ -1,0 +1,108 @@
+@import "./tokens.css";
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-md);
+  color: var(--color-fg);
+  background: var(--color-bg);
+}
+
+/* Every page renders its content inside a single top-level <main>; capping
+   its width and centering it here is a one-place fix for readable line
+   length on desktop, with full-bleed padding that scales down on narrow
+   viewports instead of a fixed pixel width that would force horizontal
+   scrolling on mobile. */
+main {
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-4);
+}
+
+@media (max-width: 30rem) {
+  main {
+    padding: var(--space-4) var(--space-3);
+  }
+}
+
+/* Every interactive element gets a visible focus indicator — never
+   `outline: none` without a replacement, so keyboard users always see
+   where focus is. */
+:focus-visible {
+  outline: var(--focus-ring-width) solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-bottom: var(--space-4);
+}
+
+.field__label {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-fg);
+}
+
+.field__input {
+  font: inherit;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  color: var(--color-fg);
+  /* WCAG 2.5.8 (AA): touch targets at least 24x24px, comfortably above that
+     here so inputs stay tappable on phone-sized screens. */
+  min-height: 2.75rem;
+}
+
+.field__input[aria-invalid="true"] {
+  border-color: var(--color-danger);
+}
+
+.field__error {
+  font-size: var(--font-size-sm);
+  color: var(--color-danger);
+}
+
+.btn {
+  font: inherit;
+  font-weight: 600;
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  cursor: pointer;
+  /* WCAG 2.5.8 (AA): touch targets at least 24x24px, comfortably above that
+     here so buttons stay tappable on phone-sized screens. */
+  min-height: 2.75rem;
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.btn--primary {
+  background: var(--color-primary);
+  color: var(--color-primary-fg);
+}
+
+.btn--primary:hover:not(:disabled) {
+  background: var(--color-primary-hover);
+}
+
+.btn--secondary {
+  background: var(--color-bg);
+  color: var(--color-fg);
+  border-color: var(--color-border);
+}
+
+.calendar-row--conflict {
+  background: var(--color-danger-bg);
+}

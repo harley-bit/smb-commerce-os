@@ -1,6 +1,7 @@
 node_modules/
 dist/
 build/
+.next/
 .env
 .env.local
 *.sqlite
@@ -10,6 +11,9 @@ build/
 coverage/
 .turbo/
 *.tsbuildinfo
+e2e/test-results/
+e2e/playwright-report/
+e2e/blob-report/
 __pycache__/
 scripts/loop_runs/*
 !scripts/loop_runs/card_timings.jsonl

@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "condition_media_storage_key_unique" ON "condition_media" USING btree ("storage_key");

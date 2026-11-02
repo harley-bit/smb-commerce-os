@@ -19,10 +19,14 @@ export interface Session {
 }
 
 /**
- * The identity a verified session resolves to, for use by
- * authenticated routes and (once tenants exist) row-level scoping.
+ * The identity a verified session resolves to, for use by authenticated
+ * routes. Distinct from `TenantContext` (`packages/domain/src/tenancy`,
+ * D017): this is *who* is calling (global user identity, no merchant
+ * scope — a user can belong to several merchants via `merchant_users`),
+ * while `TenantContext` is *which merchant's data* a repository call may
+ * touch.
  */
-export interface TenantContext {
+export interface AuthIdentity {
   userId: string;
   email: string;
   roles: string[];
@@ -84,12 +88,65 @@ export class InvalidMfaCodeError extends Error {
   }
 }
 
+/** Thrown by `exchangeAuthorizationCode` when the code is unknown, expired, or already redeemed. */
+export class InvalidAuthorizationCodeError extends Error {
+  constructor() {
+    super("Invalid or expired authorization code.");
+    this.name = "InvalidAuthorizationCodeError";
+  }
+}
+
+/**
+ * Thrown by `exchangeAuthorizationCode` when `SHA256(codeVerifier)` (base64url)
+ * doesn't match the `codeChallenge` supplied when the code was issued —
+ * RFC 7636's core PKCE check.
+ */
+export class PkceVerificationFailedError extends Error {
+  constructor() {
+    super("PKCE verification failed: code_verifier does not match the original code_challenge.");
+    this.name = "PkceVerificationFailedError";
+  }
+}
+
+/** Thrown by `refreshMobileSession` when the refresh token is unknown, expired, or revoked. */
+export class InvalidRefreshTokenError extends Error {
+  constructor() {
+    super("Invalid, expired, or revoked refresh token.");
+    this.name = "InvalidRefreshTokenError";
+  }
+}
+
 /** A freshly generated, not-yet-confirmed TOTP enrollment (ADR-002 / `docs/design/07`). */
 export interface MfaEnrollment {
   /** Base32 TOTP secret — shown once for manual entry. */
   secret: string;
   /** `otpauth://` URI suitable for rendering as a QR code. */
   otpauthUrl: string;
+}
+
+/**
+ * A short-lived, single-use authorization code (`docs/cards/D138.md`,
+ * OAuth 2.0 Authorization Code + PKCE, RFC 7636) — redeemable exactly once
+ * via `exchangeAuthorizationCode`, bound to the `codeChallenge` supplied
+ * when it was issued.
+ */
+export interface AuthorizationCodeGrant {
+  code: string;
+  expiresAt: string;
+}
+
+/**
+ * The token pair a mobile client stores in platform secure storage
+ * (Keychain/Keystore — never `AsyncStorage`, per this card's security
+ * check): a short-lived opaque access token (the same shape/semantics as
+ * `Session.token`) plus a longer-lived opaque refresh token that redeems a
+ * fresh pair via `refreshMobileSession`, rotating on every use.
+ */
+export interface MobileTokenPair {
+  accessToken: string;
+  accessTokenExpiresAt: string;
+  refreshToken: string;
+  refreshTokenExpiresAt: string;
 }
 
 /**
@@ -109,7 +166,7 @@ export interface AuthProvider {
    */
   authenticate(email: string, password: string, mfaCode?: string): Promise<AuthResult>;
   createSession(userId: string, ip: string, userAgent: string): Promise<Session>;
-  verifySession(token: string): Promise<TenantContext | null>;
+  verifySession(token: string): Promise<AuthIdentity | null>;
   revokeSession(token: string): Promise<void>;
   initiatePasswordReset(email: string): Promise<void>;
   completePasswordReset(token: string, newPassword: string): Promise<void>;
@@ -117,4 +174,32 @@ export interface AuthProvider {
   enrollMfa(email: string, password: string): Promise<MfaEnrollment>;
   /** Re-authenticates with the password and confirms the pending secret with a valid code. */
   confirmMfaEnrollment(email: string, password: string, code: string): Promise<void>;
+  /**
+   * Mobile PKCE authorization step (`docs/cards/D138.md`): mints a
+   * short-lived, single-use code bound to `codeChallenge` for `userId`.
+   * Only `codeChallengeMethod: "S256"` is supported — plain PKCE is not
+   * offered.
+   */
+  createAuthorizationCode(
+    userId: string,
+    codeChallenge: string,
+    codeChallengeMethod: "S256",
+  ): Promise<AuthorizationCodeGrant>;
+  /**
+   * Mobile PKCE token exchange: redeems a code minted by
+   * `createAuthorizationCode`, verifying `SHA256(codeVerifier)` (base64url)
+   * matches the original `codeChallenge` before ever issuing tokens.
+   * Throws `InvalidAuthorizationCodeError` for an unknown/expired/reused
+   * code, `PkceVerificationFailedError` for a verifier mismatch.
+   */
+  exchangeAuthorizationCode(code: string, codeVerifier: string, ip: string, userAgent: string): Promise<MobileTokenPair>;
+  /**
+   * Redeems a refresh token for a fresh `MobileTokenPair`, rotating it
+   * (the presented refresh token is revoked as part of issuing the new
+   * one, so it can't be replayed). Throws `InvalidRefreshTokenError` for
+   * an unknown/expired/already-revoked token.
+   */
+  refreshMobileSession(refreshToken: string, ip: string, userAgent: string): Promise<MobileTokenPair>;
+  /** Mobile sign-out: revokes a refresh token so it can no longer mint new sessions. */
+  revokeMobileSession(refreshToken: string): Promise<void>;
 }

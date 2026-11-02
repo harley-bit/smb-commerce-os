@@ -1,5 +1,7 @@
 # SMB Commerce OS — Working Rules for Claude
 
+> **▶ RESUMED 2026-11-02 (founder instruction).** The 2026-09-22 pause is lifted. The 400+ local-only commits are now on GitHub as `loop/main` (PR #7), and `scripts/run_build_loop.py` pushes `HEAD` to `origin/loop/main` after every card, so the build can no longer silently accumulate off-GitHub. `main` stays PR-protected; the loop never pushes to it. See the resume record at the top of `docs/BUILD_STATE.md`.
+
 This file is read at the start of every session in this repo. It exists to keep sessions focused and to make the build delegable across gaps.
 
 ## Context boundary — read this first
@@ -31,7 +33,7 @@ There are two calendars, deliberately, for two different readers. They must neve
 - **WHO** executes: the agent (Claude), acting as the developer for this repo.
 - **WHAT** gets executed: the current card's prompt/plan, exactly as written in `docs/cards/{DAY_ID}.md`.
 - **WHEN**: continuously, one card after another, for as long as the session can run (see "Token-maxing execution" below). There are no fixed calendar-date triggers — Day ID sequence, not a date, decides what's next. The `.xlsx` dashboard's Date column is an inherited planning artifact, not a schedule this loop waits on.
-- **WHERE**: locally, strictly inside this repository (`/Users/harleybarrales/Documents/Git Code Base/smb-commerce-os`). `.claude/settings.json` allows **any command, including remote git operations (push/pull/fetch/remote) and destructive git (reset --hard, clean, rebase, branch delete)**, by explicit founder decision (2026-09-08) — the boundary is the project directory, not the operation. What still requires a human decision is anything reaching *outside* this directory: `sudo`/`su`, `git config --global`, broad `rm -rf` outside the project tree, and `chmod -R 777`. This is a project-scoped allowlist, not a global permissions bypass — nothing outside `smb-commerce-os` is affected. Note this doesn't remove GitHub's own server-side branch protection on `main` (`docs/design/17`) — a local push permission and a remote's willingness to accept a direct push to a protected branch are two different things.
+- **WHERE**: locally, strictly inside this repository (`/Users/harleybarrales/dev/smb-commerce-os`). `.claude/settings.json` allows **any command, including remote git operations (push/pull/fetch/remote) and destructive git (reset --hard, clean, rebase, branch delete)**, by explicit founder decision (2026-09-08) — the boundary is the project directory, not the operation. What still requires a human decision is anything reaching *outside* this directory: `sudo`/`su`, `git config --global`, broad `rm -rf` outside the project tree, and `chmod -R 777`. This is a project-scoped allowlist, not a global permissions bypass — nothing outside `smb-commerce-os` is affected. Note this doesn't remove GitHub's own server-side branch protection on `main` (`docs/design/17`) — a local push permission and a remote's willingness to accept a direct push to a protected branch are two different things.
 - **HOW**: per the build protocol below, to the acceptance criteria on the card — no shortcuts on the non-negotiable gates.
 
 Logging is not optional and is not a summary written from memory afterward: every card's actual outcome is captured in `docs/logs/{DAY_ID}.md` as it happens, cross-linked to its card and calendar row, per the convention above.
@@ -59,7 +61,7 @@ Full protocol: `docs/design/12_daily_build_protocol.md`. Summary:
 5. Run the local gate: `pnpm lint && pnpm typecheck && pnpm test && pnpm test:isolation`.
 6. Answer the card's security question in the card's log entry.
 7. Commit with the day ID in the message (e.g. `feat(reservations): ... [D047]`).
-8. Update `docs/BUILD_STATE.md`: status, what got done, what's next, any blocker — in one or two sentences. This note is what lets the next session resume cold.
+8. Update `docs/BUILD_STATE.md`: status, what got done, what's next, any blocker — in one or two sentences. This note is what lets the next session resume cold. **This step is not done until the literal `## Current card` section's bolded `Now current: `D{NNN}`` heading line itself names the *next* Day ID — not just a background paragraph describing what happened.** Two consecutive automated runs (D139, D140, 2026-09-09) closed out the code/log/calendar correctly but left that exact heading line unchanged, pointing to the just-finished card instead of the next one; `run_build_loop.py` correctly detected the stall and stopped both times. Before committing, re-read the heading line you just edited and confirm the Day ID in it is one greater than the card you just closed (or the next unblocked Day ID, if skipping).
 
 **Never mark a card done that isn't.** Mark it `Carried` with a one-sentence reason. A false "done" is worse than an honest "carried."
 

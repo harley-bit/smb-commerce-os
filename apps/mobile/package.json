@@ -1,0 +1,38 @@
+{
+  "name": "@smb-os/mobile",
+  "version": "1.0.0",
+  "private": true,
+  "main": "index.ts",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "web": "expo start --web",
+    "build": "expo export",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:isolation": "echo \"@smb-os/mobile: no isolation suite yet\"",
+    "eas-build-post-install": "cd ../.. && pnpm turbo run build --filter=\"@smb-os/mobile^...\""
+  },
+  "dependencies": {
+    "@smb-os/contracts": "workspace:*",
+    "@smb-os/domain": "workspace:*",
+    "expo": "~57.0.31",
+    "expo-build-properties": "^57.0.22",
+    "expo-crypto": "~57.0.4",
+    "expo-image-picker": "~57.0.20",
+    "expo-secure-store": "~57.0.4",
+    "expo-status-bar": "~57.0.1",
+    "react": "19.2.3",
+    "react-native": "0.86.3",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@smb-os/eslint-config": "workspace:*",
+    "@types/react": "~19.2.18",
+    "eslint": "^10.14.0",
+    "typescript": "~6.0.3",
+    "vitest": "^3.2.7"
+  }
+}

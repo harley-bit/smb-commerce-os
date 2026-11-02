@@ -1,0 +1,1 @@
+ALTER TABLE `reservations` ADD `buffer_minutes` integer;

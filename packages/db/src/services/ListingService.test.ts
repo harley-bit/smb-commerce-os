@@ -1,0 +1,381 @@
+import { createTenantContext, generateUuidV7 } from "@smb-os/domain";
+import { beforeEach, describe, expect, it } from "vitest";
+import { createConnection, type Connection } from "../connection.js";
+import { runSqliteMigrations } from "../migrate.js";
+import * as sqliteSchema from "../schema/sqlite.js";
+import { ListingRepository } from "../repositories/ListingRepository.js";
+import { ListingService } from "./ListingService.js";
+
+describe("ListingService", () => {
+  let connection: Connection;
+  let service: ListingService;
+  let merchantA: string;
+  let merchantB: string;
+
+  beforeEach(async () => {
+    connection = createConnection(":memory:");
+    await runSqliteMigrations(connection);
+    service = new ListingService(new ListingRepository(connection));
+
+    merchantA = generateUuidV7();
+    merchantB = generateUuidV7();
+
+    await connection.db.insert(sqliteSchema.merchants).values([
+      {
+        id: merchantA,
+        name: "Merchant A",
+        slug: "merchant-a",
+        status: "ACTIVE",
+        defaultCurrency: "USD",
+        createdAt: "2026-09-08T00:00:00.000Z",
+      },
+      {
+        id: merchantB,
+        name: "Merchant B",
+        slug: "merchant-b",
+        status: "ACTIVE",
+        defaultCurrency: "USD",
+        createdAt: "2026-09-08T00:00:00.000Z",
+      },
+    ]);
+  });
+
+  it("OWNER can create a listing", () => {
+    const ctx = createTenantContext(merchantA);
+
+    const id = service.create(ctx, "OWNER", {
+      mode: "PRODUCT",
+      name: "Wool Sweater",
+      slug: "wool-sweater",
+      status: "DRAFT",
+      createdAt: "2026-09-08T00:00:00.000Z",
+    });
+
+    expect(service.findById(ctx, id)).toMatchObject({ name: "Wool Sweater" });
+  });
+
+  it("ADMIN can create a listing", () => {
+    const ctx = createTenantContext(merchantA);
+
+    expect(() =>
+      service.create(ctx, "ADMIN", {
+        mode: "SERVICE",
+        name: "Haircut",
+        slug: "haircut",
+        status: "DRAFT",
+        createdAt: "2026-09-08T00:00:00.000Z",
+      }),
+    ).not.toThrow();
+  });
+
+  it("STAFF cannot create a listing — authorization asserted at the service layer", () => {
+    const ctx = createTenantContext(merchantA);
+
+    expect(() =>
+      service.create(ctx, "STAFF", {
+        mode: "PRODUCT",
+        name: "Wool Sweater",
+        slug: "wool-sweater",
+        status: "DRAFT",
+        createdAt: "2026-09-08T00:00:00.000Z",
+      }),
+    ).toThrow(/restricted to OWNER or ADMIN/);
+  });
+
+  it("READ_ONLY cannot create a listing", () => {
+    const ctx = createTenantContext(merchantA);
+
+    expect(() =>
+      service.create(ctx, "READ_ONLY", {
+        mode: "PRODUCT",
+        name: "Wool Sweater",
+        slug: "wool-sweater",
+        status: "DRAFT",
+        createdAt: "2026-09-08T00:00:00.000Z",
+      }),
+    ).toThrow(/restricted to OWNER or ADMIN/);
+  });
+
+  it("STAFF cannot update a listing", () => {
+    const ctx = createTenantContext(merchantA);
+    const id = service.create(ctx, "OWNER", {
+      mode: "PRODUCT",
+      name: "Wool Sweater",
+      slug: "wool-sweater",
+      status: "DRAFT",
+      createdAt: "2026-09-08T00:00:00.000Z",
+    });
+
+    expect(() => service.update(ctx, "STAFF", id, { name: "Renamed" })).toThrow(
+      /restricted to OWNER or ADMIN/,
+    );
+  });
+
+  it("STAFF cannot archive a listing", () => {
+    const ctx = createTenantContext(merchantA);
+    const id = service.create(ctx, "OWNER", {
+      mode: "PRODUCT",
+      name: "Wool Sweater",
+      slug: "wool-sweater",
+      status: "DRAFT",
+      createdAt: "2026-09-08T00:00:00.000Z",
+    });
+
+    expect(() =>
+      service.archive(ctx, "STAFF", id, "2026-09-09T00:00:00.000Z"),
+    ).toThrow(/restricted to OWNER or ADMIN/);
+  });
+
+  it("any role can list and read listings", () => {
+    const ctx = createTenantContext(merchantA);
+    service.create(ctx, "OWNER", {
+      mode: "PRODUCT",
+      name: "Wool Sweater",
+      slug: "wool-sweater",
+      status: "DRAFT",
+      createdAt: "2026-09-08T00:00:00.000Z",
+    });
+
+    expect(service.list(ctx).map((l) => l.name)).toEqual(["Wool Sweater"]);
+  });
+
+  it("attempt to change mode after creation is rejected", () => {
+    const ctx = createTenantContext(merchantA);
+    const id = service.create(ctx, "OWNER", {
+      mode: "PRODUCT",
+      name: "Wool Sweater",
+      slug: "wool-sweater",
+      status: "DRAFT",
+      createdAt: "2026-09-08T00:00:00.000Z",
+    });
+
+    const tamperedPatch = { name: "Retagged", mode: "SERVICE" } as Record<string, unknown>;
+
+    expect(() => service.update(ctx, "OWNER", id, tamperedPatch)).toThrow(/mode is immutable/i);
+    expect(service.findById(ctx, id)?.mode).toBe("PRODUCT");
+  });
+
+  it("update() without a mode field succeeds normally", () => {
+    const ctx = createTenantContext(merchantA);
+    const id = service.create(ctx, "OWNER", {
+      mode: "PRODUCT",
+      name: "Wool Sweater",
+      slug: "wool-sweater",
+      status: "DRAFT",
+      createdAt: "2026-09-08T00:00:00.000Z",
+    });
+
+    service.update(ctx, "OWNER", id, { name: "Cotton Sweater" });
+
+    expect(service.findById(ctx, id)?.name).toBe("Cotton Sweater");
+  });
+
+  it("listPublished() returns only PUBLISHED listings, across all three modes", () => {
+    const ctx = createTenantContext(merchantA);
+    service.create(ctx, "OWNER", {
+      mode: "PRODUCT",
+      name: "Wool Sweater",
+      slug: "wool-sweater",
+      status: "PUBLISHED",
+      createdAt: "2026-09-08T00:00:00.000Z",
+    });
+    service.create(ctx, "OWNER", {
+      mode: "SERVICE",
+      name: "Haircut",
+      slug: "haircut",
+      status: "PUBLISHED",
+      createdAt: "2026-09-08T00:00:00.000Z",
+    });
+    service.create(ctx, "OWNER", {
+      mode: "RENTAL",
+      name: "Tent",
+      slug: "tent",
+      status: "PUBLISHED",
+      createdAt: "2026-09-08T00:00:00.000Z",
+    });
+    service.create(ctx, "OWNER", {
+      mode: "PRODUCT",
+      name: "Unfinished Draft",
+      slug: "unfinished-draft",
+      status: "DRAFT",
+      createdAt: "2026-09-08T00:00:00.000Z",
+    });
+
+    const published = service.listPublished(ctx);
+
+    expect(published.map((l) => l.name).sort()).toEqual(["Haircut", "Tent", "Wool Sweater"]);
+    expect(published.every((l) => l.status === "PUBLISHED")).toBe(true);
+  });
+
+  it("listPublished() is tenant-isolated via the repository's scope", () => {
+    const ctxA = createTenantContext(merchantA);
+    const ctxB = createTenantContext(merchantB);
+    service.create(ctxA, "OWNER", {
+      mode: "PRODUCT",
+      name: "A Product",
+      slug: "a-product",
+      status: "PUBLISHED",
+      createdAt: "2026-09-08T00:00:00.000Z",
+    });
+
+    expect(service.listPublished(ctxB)).toEqual([]);
+  });
+
+  it("findPublishedBySlug() returns a PUBLISHED listing by slug", () => {
+    const ctx = createTenantContext(merchantA);
+    service.create(ctx, "OWNER", {
+      mode: "PRODUCT",
+      name: "Wool Sweater",
+      slug: "wool-sweater",
+      status: "PUBLISHED",
+      createdAt: "2026-09-08T00:00:00.000Z",
+    });
+
+    const found = service.findPublishedBySlug(ctx, "wool-sweater");
+
+    expect(found?.name).toBe("Wool Sweater");
+  });
+
+  it("findPublishedBySlug() does not return a DRAFT or ARCHIVED listing", () => {
+    const ctx = createTenantContext(merchantA);
+    service.create(ctx, "OWNER", {
+      mode: "PRODUCT",
+      name: "Unfinished Draft",
+      slug: "unfinished-draft",
+      status: "DRAFT",
+      createdAt: "2026-09-08T00:00:00.000Z",
+    });
+
+    expect(service.findPublishedBySlug(ctx, "unfinished-draft")).toBeUndefined();
+  });
+
+  it("findPublishedBySlug() is tenant-isolated via the repository's scope", () => {
+    const ctxA = createTenantContext(merchantA);
+    const ctxB = createTenantContext(merchantB);
+    service.create(ctxA, "OWNER", {
+      mode: "PRODUCT",
+      name: "A Product",
+      slug: "a-product",
+      status: "PUBLISHED",
+      createdAt: "2026-09-08T00:00:00.000Z",
+    });
+
+    expect(service.findPublishedBySlug(ctxB, "a-product")).toBeUndefined();
+  });
+
+  describe("listPublishedPage() — docs/cards/D141.md's cursor pagination", () => {
+    function seedFivePublishedProducts(ctx: ReturnType<typeof createTenantContext>): void {
+      for (const name of ["Alpha", "Bravo", "Charlie", "Delta", "Echo"]) {
+        service.create(ctx, "OWNER", {
+          mode: "PRODUCT",
+          name,
+          slug: name.toLowerCase(),
+          status: "PUBLISHED",
+          createdAt: "2026-09-08T00:00:00.000Z",
+        });
+      }
+    }
+
+    it("returns the first `limit` published listings, in a stable id order, plus a cursor for the next page", () => {
+      const ctx = createTenantContext(merchantA);
+      seedFivePublishedProducts(ctx);
+
+      const page = service.listPublishedPage(ctx, { limit: 2 });
+
+      expect(page.items).toHaveLength(2);
+      expect(page.nextCursor).toBe(page.items.at(1)?.id);
+    });
+
+    it("walking the cursor forward visits every listing exactly once, with no duplicates or gaps", () => {
+      const ctx = createTenantContext(merchantA);
+      seedFivePublishedProducts(ctx);
+
+      const seen: string[] = [];
+      let cursor: string | undefined;
+      for (let i = 0; i < 10; i++) {
+        const page = service.listPublishedPage(ctx, { limit: 2, cursor });
+        seen.push(...page.items.map((l) => l.id));
+        if (page.nextCursor === null) break;
+        cursor = page.nextCursor;
+      }
+
+      expect(seen).toHaveLength(5);
+      expect(new Set(seen).size).toBe(5);
+    });
+
+    it("returns nextCursor: null once the last page is reached", () => {
+      const ctx = createTenantContext(merchantA);
+      seedFivePublishedProducts(ctx);
+
+      const page = service.listPublishedPage(ctx, { limit: 10 });
+
+      expect(page.items).toHaveLength(5);
+      expect(page.nextCursor).toBeNull();
+    });
+
+    it("combines the mode filter with pagination", () => {
+      const ctx = createTenantContext(merchantA);
+      seedFivePublishedProducts(ctx);
+      service.create(ctx, "OWNER", {
+        mode: "SERVICE",
+        name: "Haircut",
+        slug: "haircut",
+        status: "PUBLISHED",
+        createdAt: "2026-09-08T00:00:00.000Z",
+      });
+
+      const page = service.listPublishedPage(ctx, { mode: "SERVICE", limit: 10 });
+
+      expect(page.items.map((l) => l.name)).toEqual(["Haircut"]);
+    });
+
+    it("never returns a DRAFT or ARCHIVED listing on any page", () => {
+      const ctx = createTenantContext(merchantA);
+      seedFivePublishedProducts(ctx);
+      service.create(ctx, "OWNER", {
+        mode: "PRODUCT",
+        name: "Unfinished Draft",
+        slug: "unfinished-draft-page",
+        status: "DRAFT",
+        createdAt: "2026-09-08T00:00:00.000Z",
+      });
+
+      const page = service.listPublishedPage(ctx, { limit: 10 });
+
+      expect(page.items.map((l) => l.name)).not.toContain("Unfinished Draft");
+    });
+
+    it("is tenant-isolated via the repository's scope", () => {
+      const ctxA = createTenantContext(merchantA);
+      const ctxB = createTenantContext(merchantB);
+      seedFivePublishedProducts(ctxA);
+
+      expect(service.listPublishedPage(ctxB, { limit: 10 }).items).toEqual([]);
+    });
+
+    it("falls back to the first page when given a stale/unknown cursor (fails open, not closed)", () => {
+      const ctx = createTenantContext(merchantA);
+      seedFivePublishedProducts(ctx);
+
+      const page = service.listPublishedPage(ctx, { limit: 2, cursor: "no-such-id" });
+
+      expect(page.items).toHaveLength(2);
+    });
+  });
+
+  it("service methods are cross-tenant isolated via the repository's scope", () => {
+    const ctxA = createTenantContext(merchantA);
+    const ctxB = createTenantContext(merchantB);
+
+    const id = service.create(ctxA, "OWNER", {
+      mode: "PRODUCT",
+      name: "A Product",
+      slug: "a-product",
+      status: "DRAFT",
+      createdAt: "2026-09-08T00:00:00.000Z",
+    });
+
+    expect(service.findById(ctxB, id)).toBeUndefined();
+    expect(service.list(ctxB)).toEqual([]);
+  });
+});
